@@ -236,11 +236,23 @@ How to reduce it:
 
 | Milestone | Scope | Done when |
 |---|---|---|
-| M1 Core | Layered skeleton, config, SQLite schema + migrations, writer thread, scanner with OneDrive placeholder check, derive stage, job queue, buffalo_l ONNX adapter, CLI (`facegroup scan <dir>`), unit tests with fake adapters | 10k photos index without crashing, resume after being killed, and peak RAM is measured |
+| M1 Core ✅ | Layered skeleton, config, SQLite schema + migrations, writer thread, scanner with OneDrive placeholder check, derive stage, job queue, buffalo_l ONNX adapter, CLI (`facegroup scan <dir>`), unit tests with fake adapters | 10k photos index without crashing, resume after being killed, and peak RAM is measured |
 | M2 People | k-NN assignment, cluster suggestions, people screen with accept/merge/split/move/reject and undo, local API security | A 2k-photo library can be cleaned up in under 15 minutes, and property tests show no user decision is ever overwritten |
 | M3 Visual search | Image-text fingerprints, search bar, filters (person, date, folder) | "beach sunset" returns relevant images on the test set |
 | M4 Text | OCR, optional captions, text fingerprints, combined search | Search for words that appear in images (receipts, signs) |
 | M5 Video and polish | Video frame sampling + face tracks, folder watching, installer, evaluation report | One-click Windows install on a clean machine |
+
+### M1 results (2026-10-17): done criteria met
+
+Benchmark: `scripts/bench.py --count 10000 --kill-after 240` on the reference laptop (Intel Core Ultra, 14 cores, integrated GPU via DirectML, 16 GB). The library is 10,000 synthetic variants of a public 6-person group photo (InsightFace `t1.jpg`): flips, crops, 0.8–2.5x scale, brightness, 10% EXIF-rotated, so 4–6 faces per photo.
+
+| Criterion | Result |
+|---|---|
+| 10k photos index without crashing | 10,000 / 10,000 derived and face-analysed, **0 failed**; 53,365 faces stored with embeddings |
+| Resume after being killed | Hard-killed at 240 s (6,450 derived, 6 mid-job). The next run re-queued the 6 and finished everything; nothing lost or duplicated |
+| Peak RAM measured | **0.92 GB** peak working set (process total, model loaded) |
+| Speed | Derive about 27 photos/s. Faces about **5.1 photos/s (about 27 faces/s)** on the integrated GPU. Total 37 min for 10k photos at 5.3 faces each; real libraries average fewer faces per photo, so they will be faster |
+| Disk | Database 251 MB, thumbnails 250 MB; working images cleaned up as designed |
 
 ### Decided (2026-10-17)
 
