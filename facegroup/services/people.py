@@ -103,7 +103,7 @@ class PeopleService:
     def accept(self, suggestion_id: int, name: str = "", exclude: set[int] = frozenset()) -> int:
         faces = [f for f in self._store.suggestion_faces(suggestion_id) if f not in exclude]
         pid = self._store.apply_change(PeopleChange(
-            "accept", face_ids=faces, new_person_name=name, clear_suggestion=suggestion_id))
+            "accept", face_ids=faces, new_person_name=name, clear_suggestions=[suggestion_id]))
         self.assign()
         return pid
 
@@ -112,7 +112,7 @@ class PeopleService:
         faces = [f for f in self._store.suggestion_faces(suggestion_id)
                  if f not in exclude and person_id not in rejected.get(f, ())]
         self._store.apply_change(PeopleChange(
-            "accept_into", face_ids=faces, to_person=person_id, clear_suggestion=suggestion_id))
+            "accept_into", face_ids=faces, to_person=person_id, clear_suggestions=[suggestion_id]))
         self.assign()
         return person_id
 
@@ -120,7 +120,7 @@ class PeopleService:
         """Cartoons, statues, animals. They go to one hidden 'Not a person' group, and similar faces follow."""
         faces = list(face_ids or []) + (self._store.suggestion_faces(suggestion_id) if suggestion_id else [])
         ignored = self._store.ignored_person_id()
-        change = PeopleChange("ignore", face_ids=faces, clear_suggestion=suggestion_id)
+        change = PeopleChange("ignore", face_ids=faces, clear_suggestions=[suggestion_id] if suggestion_id else [])
         if ignored is None:
             change.new_person_name, change.new_person_kind = "Not a person", "ignored"
         else:
@@ -135,9 +135,36 @@ class PeopleService:
     def merge(self, source_id: int, target_id: int) -> None:
         if source_id == target_id:
             return
-        self._store.apply_change(PeopleChange(
-            "merge", to_person=target_id, delete_persons=[source_id], keep_assigned_by=True))
+        self._store.apply_change(PeopleChange("merge", to_person=target_id, delete_persons=[source_id]))
         self.assign()
+
+    def combine(self, person_ids: list[int], suggestion_ids: list[int], name: str = "") -> int | None:
+        """One person from several people and/or suggested groups, in one undoable step.
+
+        The target is the existing person with a name (or, failing that, the most faces); the others merge into
+        it. Faces from suggestions become confirmed. With only suggestions, a new person is created.
+        """
+        people = [p for p in (self._store.person(i) for i in dict.fromkeys(person_ids)) if p and p.kind == "person"]
+        rejected = self._store.rejections()
+        faces: list[int] = []
+        for sid in dict.fromkeys(suggestion_ids):
+            faces += self._store.suggestion_faces(sid)
+        if not people and not faces:
+            return None
+        change = PeopleChange("combine", clear_suggestions=list(suggestion_ids))
+        if people:
+            target = max(people, key=lambda p: (bool(p.name), p.faces, -p.id))
+            change.to_person = target.id
+            change.delete_persons = [p.id for p in people if p.id != target.id]
+            change.face_ids = [f for f in faces if target.id not in rejected.get(f, ())]
+            if name.strip():
+                change.rename = (target.id, name)
+        else:
+            change.face_ids = faces
+            change.new_person_name = name
+        pid = self._store.apply_change(change)
+        self.assign()
+        return pid
 
     def confirm(self, face_ids: list[int], person_id: int) -> None:
         """'Yes, this is them': turns automatic matches into confirmed ones (which then vote)."""

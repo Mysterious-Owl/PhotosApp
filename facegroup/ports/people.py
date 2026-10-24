@@ -12,17 +12,16 @@ import numpy as np
 class PeopleChange:
     """One user action, applied atomically and logged with enough state to undo it."""
 
-    action: str  # accept, accept_into, ignore, rename, merge, move, split, reject, unassign
-    face_ids: list[int] = field(default_factory=list)
+    action: str  # accept, accept_into, combine, ignore, rename, merge, move, split, reject, confirm
+    face_ids: list[int] = field(default_factory=list)  # picked by the user: they become confirmed for the target
     to_person: int | None = None  # existing target person
     new_person_name: str | None = None  # create a new target person with this name ('' = unnamed)
     new_person_kind: str = "person"  # person | ignored
     unassign: bool = False  # set person_id NULL instead of assigning
-    keep_assigned_by: bool = False  # merge: faces keep auto/user status
     rejects: list[tuple[int, int]] = field(default_factory=list)  # (face_id, person_id) to add
-    delete_persons: list[int] = field(default_factory=list)
+    delete_persons: list[int] = field(default_factory=list)  # merged into the target; their faces keep status
     rename: tuple[int, str] | None = None
-    clear_suggestion: int | None = None
+    clear_suggestions: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

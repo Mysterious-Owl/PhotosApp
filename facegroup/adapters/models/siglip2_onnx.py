@@ -8,7 +8,6 @@ lower-cased, Gemma-tokenised with an end token, padded to 64.
 from __future__ import annotations
 
 import logging
-import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +16,7 @@ from PIL import Image
 from tokenizers import Tokenizer
 
 from facegroup.adapters.models.buffalo_onnx import choose_providers
+from facegroup.adapters.models.download import download
 
 log = logging.getLogger(__name__)
 ort.set_default_logger_severity(3)
@@ -38,10 +38,7 @@ def ensure_siglip2(models_dir: Path, variant: str = FP32) -> Path:
     for f in ("tokenizer.json", f"onnx/{_file('vision', variant)}", f"onnx/{_file('text', variant)}"):
         dest = target / Path(f).name
         if not dest.exists():
-            log.info("downloading %s", f)
-            tmp = dest.with_suffix(".part")
-            urllib.request.urlretrieve(f"{REPO}/{f}", tmp)
-            tmp.replace(dest)
+            download(f"{REPO}/{f}", dest)
     return target
 
 

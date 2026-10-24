@@ -124,7 +124,7 @@ def people() -> None:
     a = build(load_settings(), face_model_id=_model_id(), analyzer_factory=lambda: None)
     try:
         for p in a.people.people():
-            typer.echo(f"  {p.name or '(unnamed)':<30} {p.faces:>5} faces ({p.confirmed} confirmed) in {p.photos} photos")
+            typer.echo(f"  {p.name or f'Face {p.id}':<30} {p.faces:>5} faces ({p.confirmed} confirmed) in {p.photos} photos")
         s = a.people.suggestions()
         typer.echo(f"{len(s)} suggested group(s): " + ", ".join(str(g.size) for g in s[:20]))
         typer.echo("Open the People screen with: facegroup ui")
@@ -202,5 +202,15 @@ def download_models() -> None:
     typer.echo(f"\nModels ready in {path}")
 
 
+def main() -> None:
+    from facegroup.adapters.models.download import ModelDownloadError
+
+    try:
+        app()
+    except ModelDownloadError as exc:
+        typer.echo(f"\n{exc}", err=True)
+        raise SystemExit(2) from None
+
+
 if __name__ == "__main__":
-    app()
+    main()

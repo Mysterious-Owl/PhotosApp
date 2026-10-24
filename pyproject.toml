@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-facegroup = "facegroup.entrypoints.cli:app"
+facegroup = "facegroup.entrypoints.cli:main"
 
 [dependency-groups]
 dev = [

@@ -13,7 +13,7 @@
     <span class="or">or add to</span>
     <select name="into" aria-label="Add to an existing person">
       <option value="">existing person…</option>
-      {% for p in people %}<option value="{{ p.id }}">{{ p.name or "Unnamed #" ~ p.id }}</option>{% endfor %}
+      {% for p in people %}<option value="{{ p.id }}">{{ p|label }}</option>{% endfor %}
     </select>
     <button class="btn" type="submit" name="use_into" value="1">Add</button>
     {% endif %}
@@ -24,6 +24,7 @@
     <label class="face">
       <input type="checkbox" name="face" value="{{ f }}" checked>
       <img src="/faces/{{ f }}.jpg" alt="" width="112" height="112" loading="lazy">
+      <a class="open" href="/photos/{{ media_of[f] }}?face={{ f }}" title="View the photo">Photo</a>
     </label>
     {% endfor %}
   </div>

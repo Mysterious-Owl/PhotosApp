@@ -12,7 +12,6 @@ import json
 import logging
 import shutil
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -20,6 +19,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from facegroup.adapters.models.download import download
 from facegroup.domain.entities import DetectedFace
 
 log = logging.getLogger(__name__)
@@ -43,16 +43,7 @@ def ensure_buffalo_l(models_dir: Path, progress=None) -> Path:
         return target
     target.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=models_dir) as tmp:
-        zip_path = Path(tmp) / "buffalo_l.zip"
-        log.info("downloading %s", BUFFALO_L_URL)
-        with urllib.request.urlopen(BUFFALO_L_URL, timeout=60) as resp, open(zip_path, "wb") as out:
-            total = int(resp.headers.get("Content-Length") or 0)
-            done = 0
-            while chunk := resp.read(1 << 20):
-                out.write(chunk)
-                done += len(chunk)
-                if progress:
-                    progress(done, total)
+        zip_path = download(BUFFALO_L_URL, Path(tmp) / "buffalo_l.zip", progress)
         with zipfile.ZipFile(zip_path) as zf:
             for name in zf.namelist():
                 base = Path(name).name

@@ -188,3 +188,57 @@ class TestSearchPages:
         _, client = indexed
         html = client.get('/search?q=<script>alert(1)</script>').text
         assert "<script>alert(1)</script>" not in html
+
+
+class TestCombineLabelsAndPhotos:
+    def test_unnamed_people_get_face_numbers(self, env):
+        app, _, client = env
+        login(client)
+        pid = app.people.accept(app.people.suggestions()[0].id, "")
+        assert f"Face {pid}" in client.get("/people").text
+        assert f"Face {pid}" in client.get(f"/people/{pid}").text
+
+    def test_combine_from_the_overview(self, env):
+        app, _, client = env
+        login(client)
+        s = app.people.suggestions()
+        named = app.people.accept(s[0].id, "Mom")
+        before = app.people.person(named).faces
+        absorbed = app.people.suggestion_faces(s[1].id) + app.people.suggestion_faces(s[2].id)
+        r = client.post("/people/combine", data={"person": [str(named)], "suggestion": [str(s[1].id), str(s[2].id)]})
+        assert r.status_code == 303 and r.headers["location"] == f"/people/{named}"
+        assert app.people.person(named).faces == before + len(absorbed)
+        assert all(count(app, "SELECT person_id FROM face WHERE id=?", f) == named for f in absorbed)
+        client.post("/undo", data={"next": "/people"})
+        assert app.people.person(named).faces == before  # one undo reverses the whole combine
+
+    def test_combine_needs_two_things(self, env):
+        app, _, client = env
+        login(client)
+        sid = app.people.suggestions()[0].id
+        r = client.post("/people/combine", data={"suggestion": [str(sid)]})
+        assert r.status_code == 200 and "at least two" in r.text
+
+    def test_overview_offers_combine_checkboxes(self, env):
+        app, _, client = env
+        login(client)
+        app.people.accept(app.people.suggestions()[0].id, "A")
+        html = client.get("/people").text
+        assert 'name="suggestion"' in html and 'name="person"' in html and 'form="combine"' in html
+
+
+def test_faces_link_to_their_photo_with_the_face_outlined(make_app, library_dir):
+    make_photo(library_dir / "a.jpg")
+    app = make_app()
+    app.library.scan(app.library.add_root(library_dir))
+    app.indexing.run_all()
+    client = TestClient(create_app(app, Scheduler(), TOKEN, PORT), base_url=BASE, follow_redirects=False)
+    login(client)
+    face = count(app, "SELECT id FROM face")
+    media = count(app, "SELECT id FROM media")
+    pid = app.people.split([face], "")
+    person_page = client.get(f"/people/{pid}").text
+    assert f"/photos/{media}?face={face}" in person_page
+    photo = client.get(f"/photos/{media}?face={face}").text
+    assert f'id="face{face}"' in photo and "box highlight" in photo
+    assert f"Face {pid}" in photo

@@ -174,23 +174,27 @@ class SqlitePeopleStore(SqliteBase):
                     (ch.new_person_name.strip(), ch.new_person_kind, now),
                 ).lastrowid
 
-            face_ids = list(dict.fromkeys(ch.face_ids))
-            for pid in ch.delete_persons:  # merge: every face of the merged person moves
-                face_ids += [r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (pid,))]
+            # Two kinds of faces: `explicit` ones the user picked (they become confirmed), and `merged` ones
+            # that arrive because their whole person is merged in (they keep their confirmed/auto status).
+            explicit = list(dict.fromkeys(ch.face_ids))
+            picked = set(explicit)
+            merged: list[int] = []
+            for pid in ch.delete_persons:
+                merged += [r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (pid,)) if r[0] not in picked]
 
             before: dict[int, list] = {}
-            for chunk in _chunks(face_ids):
+            for chunk in _chunks(explicit + merged):
                 for r in c.execute(
                     f"SELECT id, person_id, assigned_by, assign_score FROM face WHERE id IN ({_placeholders(len(chunk))})",
                     chunk,
                 ):
                     before[r[0]] = [r[1], r[2], r[3]]
 
-            if ch.keep_assigned_by and target is not None and face_ids:
-                # Merge: a face the user said is "not <target>" must not arrive in target with the rest.
+            if merged and target is not None:
+                # A face the user said is "not <target>" must not arrive in target with the rest of its person.
                 # The specific decision beats the bulk one; such faces become unassigned instead.
                 vetoed = set()
-                for chunk in _chunks(face_ids):
+                for chunk in _chunks(merged):
                     vetoed |= {r[0] for r in c.execute(
                         f"SELECT face_id FROM face_reject WHERE person_id=? AND face_id IN ({_placeholders(len(chunk))})",
                         (target, *chunk))}
@@ -198,23 +202,25 @@ class SqlitePeopleStore(SqliteBase):
                     v = sorted(vetoed)
                     c.execute(f"UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL "
                               f"WHERE id IN ({_placeholders(len(v))})", v)
-                    face_ids = [f for f in face_ids if f not in vetoed]
+                    merged = [f for f in merged if f not in vetoed]
+                for chunk in _chunks(merged):
+                    c.execute(f"UPDATE face SET person_id=? WHERE id IN ({_placeholders(len(chunk))})", (target, *chunk))
 
-            for chunk in _chunks(face_ids):
+            for chunk in _chunks(explicit):
                 ph = _placeholders(len(chunk))
                 if ch.unassign:
                     c.execute(f"UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL WHERE id IN ({ph})", chunk)
-                elif ch.keep_assigned_by:
-                    c.execute(f"UPDATE face SET person_id=? WHERE id IN ({ph})", (target, *chunk))
                 elif target is not None:
                     c.execute(f"UPDATE face SET person_id=?, assigned_by='user', assign_score=NULL WHERE id IN ({ph})",
                               (target, *chunk))
-                if target is not None and not ch.unassign:
-                    c.execute(f"DELETE FROM suggestion_face WHERE face_id IN ({ph})", chunk)
+            if target is not None and not ch.unassign:
+                for chunk in _chunks(explicit + merged):
+                    c.execute(f"DELETE FROM suggestion_face WHERE face_id IN ({_placeholders(len(chunk))})", chunk)
 
+            face_ids = explicit
             rejects = list(ch.rejects)
             deleted_rejects = []
-            if target is not None and not ch.unassign and not ch.keep_assigned_by and face_ids:
+            if target is not None and not ch.unassign and face_ids:
                 # The user explicitly put these faces in `target`: that overrides an earlier "not this person".
                 for chunk in _chunks(face_ids):
                     ph = _placeholders(len(chunk))
@@ -251,8 +257,8 @@ class SqlitePeopleStore(SqliteBase):
                     deleted_persons.append(list(row))
                     c.execute("DELETE FROM person WHERE id=?", (pid,))
 
-            if ch.clear_suggestion is not None:
-                c.execute("DELETE FROM suggestion WHERE id=?", (ch.clear_suggestion,))
+            for sid in ch.clear_suggestions:
+                c.execute("DELETE FROM suggestion WHERE id=?", (sid,))
 
             payload = {
                 "faces": before, "created": created, "deleted_persons": deleted_persons,

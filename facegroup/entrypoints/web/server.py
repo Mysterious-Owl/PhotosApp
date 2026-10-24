@@ -27,6 +27,13 @@ def _ids(values: list[str]) -> list[int]:
     return [int(v) for v in values if str(v).isdigit()]
 
 
+def person_label(p) -> str:
+    """Unnamed people get a stable id-based label ("Face 12") so they can be told apart and referred to."""
+    name = p.get("name") if isinstance(p, dict) else p.name
+    pid = p.get("person_id", p.get("id")) if isinstance(p, dict) else p.id
+    return name.strip() if name and name.strip() else f"Face {pid}"
+
+
 def _safe_next(url: str | None, default: str = "/people") -> str:
     """Only same-site relative paths, so a crafted form cannot redirect elsewhere."""
     if not url or not url.startswith("/") or url.startswith("//"):
@@ -37,6 +44,7 @@ def _safe_next(url: str | None, default: str = "/people") -> str:
 def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     web = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=HERE / "templates")
+    templates.env.filters["label"] = person_label
     web.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://{h}" for h in allowed_hosts}
@@ -94,7 +102,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         faces = app.people.suggestion_faces(sid)
         if not faces:
             return RedirectResponse("/people", status_code=303)
-        return page(request, "suggestion.html", sid=sid, faces=faces, people=app.people.people())
+        media_of = {f: (app.people_store.face_media(f) or (0, None))[0] for f in faces}
+        return page(request, "suggestion.html", sid=sid, faces=faces, people=app.people.people(), media_of=media_of)
 
     @web.get("/people/{pid}", response_class=HTMLResponse)
     def person_page(request: Request, pid: int):
@@ -165,6 +174,16 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
                 app.people.not_a_person(face_ids=faces)
         return back(request, f"/people/{pid}")
 
+    @web.post("/people/combine")
+    async def combine(request: Request):
+        form = await request.form()
+        people_ids = _ids(form.getlist("person"))
+        suggestion_ids = _ids(form.getlist("suggestion"))
+        if len(people_ids) + len(suggestion_ids) < 2:
+            return page(request, "error.html", message="Tick at least two people or groups to combine.")
+        pid = app.people.combine(people_ids, suggestion_ids, str(form.get("name", "")))
+        return back(request, f"/people/{pid}" if pid else "/people")
+
     @web.post("/undo")
     def undo(request: Request, next: str = Form("/people")):
         app.people.undo()
@@ -200,11 +219,11 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
                     similar_label=app.media.media_label(similar).replace("\\", "/").split("/")[-1] if similar else "")
 
     @web.get("/photos/{mid}", response_class=HTMLResponse)
-    def photo_page(request: Request, mid: int):
+    def photo_page(request: Request, mid: int, face: int | None = None):
         info = app.search_store.photo_info(mid)
         if info is None:
             return RedirectResponse("/search", status_code=303)
-        return page(request, "photo.html", info=info, people=app.people.people())
+        return page(request, "photo.html", info=info, highlight=face)
 
     # -- library ----------------------------------------------------------------------------------------
 

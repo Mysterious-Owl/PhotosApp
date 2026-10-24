@@ -8,7 +8,7 @@
   <label>Person
     <select name="person">
       <option value="">anyone</option>
-      {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if sel_person == p.id|string }}>{{ p.name or "Unnamed #" ~ p.id }}</option>{% endfor %}
+      {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if sel_person == p.id|string }}>{{ p|label }}</option>{% endfor %}
     </select>
   </label>
   <label>From <input type="date" name="date_from" value="{{ date_from }}"></label>

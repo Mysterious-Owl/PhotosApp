@@ -116,7 +116,8 @@ class SqliteSearchStore(SqliteBase):
         if r is None:
             return None
         faces = self._read().execute(
-            "SELECT f.id, f.person_id, p.name, p.kind, f.assigned_by FROM face f JOIN item i ON i.id=f.item_id "
+            "SELECT f.id, f.person_id, p.name, p.kind, f.assigned_by, f.x1, f.y1, f.x2, f.y2, "
+            "i.width AS iw, i.height AS ih FROM face f JOIN item i ON i.id=f.item_id "
             "LEFT JOIN person p ON p.id=f.person_id WHERE i.media_id=? ORDER BY f.x1", (media_id,)).fetchall()
         return {**dict(r), "faces": [dict(f) for f in faces]}
 

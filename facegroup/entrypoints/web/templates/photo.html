@@ -3,7 +3,18 @@
 {% block main %}
 <p><a href="javascript:history.back()" hx-boost="false">← Back</a></p>
 <div class="photo-view">
-  <img class="full" src="/media/{{ info.id }}/photo.jpg" alt="">
+  <div class="photo-frame">
+    <img class="full" src="/media/{{ info.id }}/photo.jpg" alt="">
+    {% for f in info.faces if f.kind != 'ignored' and f.iw %}
+    {% set box = "left:%.2f%%; top:%.2f%%; width:%.2f%%; height:%.2f%%"|format(100 * f.x1 / f.iw, 100 * f.y1 / f.ih, 100 * (f.x2 - f.x1) / f.iw, 100 * (f.y2 - f.y1) / f.ih) %}
+    {% if f.person_id %}
+    <a class="box {{ 'highlight' if highlight == f.id }}" id="face{{ f.id }}" href="/people/{{ f.person_id }}" style="{{ box }}">
+      <span>{{ f|label }}{% if f.assigned_by != 'user' %}?{% endif %}</span></a>
+    {% else %}
+    <div class="box {{ 'highlight' if highlight == f.id }}" id="face{{ f.id }}" style="{{ box }}"><span>unsorted</span></div>
+    {% endif %}
+    {% endfor %}
+  </div>
   <aside>
     <p class="meta"><code>{{ info.rel_path }}</code></p>
     <p class="meta">
@@ -17,8 +28,8 @@
     <div class="faces-in">
       {% for f in info.faces if f.kind != 'ignored' %}
       {% if f.person_id %}
-      <a href="/people/{{ f.person_id }}"><img src="/faces/{{ f.id }}.jpg" alt="" width="64" height="64">
-        {{ f.name or "Unnamed" }}{% if f.assigned_by != 'user' %}?{% endif %}</a>
+      <a href="/people/{{ f.person_id }}" class="{{ 'current' if highlight == f.id }}"><img src="/faces/{{ f.id }}.jpg" alt="" width="64" height="64">
+        {{ f|label }}{% if f.assigned_by != 'user' %}?{% endif %}</a>
       {% else %}
       <span class="faces-in-unknown"><img src="/faces/{{ f.id }}.jpg" alt="" width="64" height="64" style="border-radius:50%"><br><span class="meta">unsorted</span></span>
       {% endif %}

@@ -217,6 +217,42 @@ def test_merge_does_not_override_a_specific_rejection(lib):
     assert lib.state() == before
 
 
+def test_combine_suggestions_makes_one_new_person(lib):
+    people = lib.app.people
+    people.refresh()
+    s = people.suggestions()
+    faces = people.suggestion_faces(s[0].id) + people.suggestion_faces(s[1].id)
+    pid = people.combine([], [s[0].id, s[1].id], "")
+    assert {assigned(lib.app, f) for f in faces} == {pid}
+    assert all(by(lib.app, f) == "user" for f in faces)
+    assert people.person(pid).name == ""  # unnamed: shown as "Face <id>"
+
+
+def test_combine_people_and_suggestions_keeps_the_named_person_and_undoes_in_one_step(lib):
+    people = lib.app.people
+    people.refresh()
+    s = people.suggestions()
+    unnamed = people.accept(s[0].id, "")
+    named = people.accept(s[1].id, "Mom")
+    third = s[2].id
+    before = lib.state()
+    target = people.combine([unnamed, named], [third], "")
+    assert target == named  # the named one survives
+    assert people.person(unnamed) is None
+    assert people.person(named).faces == sum(1 for f in lib.truth if assigned(lib.app, f) == named)
+    assert people.undo() == "combine"  # a single undo reverses the whole combine
+    assert lib.state() == before
+
+
+def test_combine_can_rename(lib):
+    people = lib.app.people
+    people.refresh()
+    s = people.suggestions()
+    a, b = people.accept(s[0].id, ""), people.accept(s[1].id, "")
+    target = people.combine([a, b], [], "Grandpa")
+    assert people.person(target).name == "Grandpa"
+
+
 def test_not_a_person_goes_to_one_hidden_group(lib):
     people = lib.app.people
     people.refresh()
@@ -251,7 +287,8 @@ def test_forget_deletes_faces_and_rescans_do_not_bring_them_back(make_app, libra
 
 
 ACTIONS = st.lists(
-    st.tuples(st.sampled_from(["accept", "reject", "move", "split", "merge", "undo", "refresh", "not_person"]),
+    st.tuples(st.sampled_from(["accept", "reject", "move", "split", "merge", "combine", "undo", "refresh",
+                               "not_person"]),
               st.integers(0, 1000), st.integers(0, 1000)),
     min_size=1, max_size=12,
 )
@@ -283,6 +320,8 @@ def test_automatic_steps_never_change_a_user_decision(make_app, tmp_path, action
                 people.split([f], "")
             elif kind == "merge" and len(persons) > 1:
                 people.merge(persons[x % len(persons)], persons[y % len(persons)])
+            elif kind == "combine":
+                people.combine(persons[: (x % 3)], [g.id for g in sugg][: (y % 3)], "")
             elif kind == "undo":
                 people.undo()
             elif kind == "refresh":
