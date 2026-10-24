@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block main %}
+{% if not roots %}
+<section class="card empty">
+  <h1>Add your photo folder</h1>
+  <p>FaceGroup only reads your photos. It never moves, renames or edits them.</p>
+  <form method="post" action="/roots" class="row">
+    <input name="path" placeholder="C:\Users\you\Pictures" required size="48" aria-label="Folder path">
+    <button class="btn primary" type="submit">Add and scan</button>
+  </form>
+</section>
+{% else %}
+
+{% if suggestions %}
+<section>
+  <h1>Who is this? <span class="count">{{ suggestions|length }} group{{ 's' if suggestions|length != 1 }} to review</span></h1>
+  <p class="hint">Each group is faces that look like one person. Name it to create the person; FaceGroup then finds them in new photos. Open a group to remove faces that do not belong.</p>
+  <div class="suggestions">
+    {% for s in suggestions %}
+    <article class="card suggestion" id="s{{ s.id }}">
+      <a class="faces" href="/suggestions/{{ s.id }}" title="Review all {{ s.size }} faces">
+        {% for f in s.face_ids %}<img src="/faces/{{ f }}.jpg" alt="" loading="lazy" width="72" height="72">{% endfor %}
+        {% if s.size > s.face_ids|length %}<span class="more">+{{ s.size - s.face_ids|length }}</span>{% endif %}
+      </a>
+      <form method="post" action="/suggestions/{{ s.id }}/accept" class="row">
+        <input type="hidden" name="next" value="/people">
+        <input type="hidden" name="all" value="1">
+        <input name="name" placeholder="Name" aria-label="Name for this person">
+        <button class="btn primary" type="submit">Save</button>
+        <a class="btn" href="/suggestions/{{ s.id }}">Review</a>
+      </form>
+      <form method="post" action="/suggestions/{{ s.id }}/ignore">
+        <input type="hidden" name="next" value="/people">
+        <button class="link" type="submit">Not a person</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h1>People <span class="count">{{ people|length }}</span></h1>
+  {% if people %}
+  <div class="people">
+    {% for p in people %}
+    <a class="card person" id="p{{ p.id }}" href="/people/{{ p.id }}">
+      {% if p.cover_face_id %}<img src="/faces/{{ p.cover_face_id }}.jpg" alt="" width="120" height="120" loading="lazy">{% endif %}
+      <strong>{{ p.name or "Unnamed" }}</strong>
+      <span class="meta">{{ p.photos }} photo{{ 's' if p.photos != 1 }}{% if p.faces > p.confirmed %} · {{ p.faces - p.confirmed }} to check{% endif %}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">No people yet. Name a group above to create the first one.</p>
+  {% endif %}
+</section>
+
+<footer class="meta">
+  Library: {% for r in roots %}<code>{{ r.path }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+  · {{ counts.counts['items'] }} photos · {{ counts.counts['faces'] }} faces
+  <details class="inline"><summary>Add folder</summary>
+    <form method="post" action="/roots" class="row">
+      <input name="path" placeholder="D:\Photos" required size="40" aria-label="Folder path">
+      <button class="btn" type="submit">Add and scan</button>
+    </form>
+  </details>
+</footer>
+{% endif %}
+{% endblock %}

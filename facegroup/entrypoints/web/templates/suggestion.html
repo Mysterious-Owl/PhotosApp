@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Review group{% endblock %}
+{% block main %}
+<p><a href="/people">← People</a></p>
+<h1>Who is this? <span class="count">{{ faces|length }} faces</span></h1>
+<p class="hint">Untick any face that is someone else. Unticked faces stay unsorted.</p>
+
+<form method="post" action="/suggestions/{{ sid }}/accept" id="review">
+  <div class="toolbar row">
+    <input name="name" placeholder="Name (optional)" aria-label="Name" autofocus>
+    <button class="btn primary" type="submit">Create person</button>
+    {% if people %}
+    <span class="or">or add to</span>
+    <select name="into" aria-label="Add to an existing person">
+      <option value="">existing person…</option>
+      {% for p in people %}<option value="{{ p.id }}">{{ p.name or "Unnamed #" ~ p.id }}</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit" name="use_into" value="1">Add</button>
+    {% endif %}
+    <button class="link select-toggle" type="button" data-target="review">Untick all</button>
+  </div>
+  <div class="grid">
+    {% for f in faces %}
+    <label class="face">
+      <input type="checkbox" name="face" value="{{ f }}" checked>
+      <img src="/faces/{{ f }}.jpg" alt="" width="112" height="112" loading="lazy">
+    </label>
+    {% endfor %}
+  </div>
+</form>
+
+<form method="post" action="/suggestions/{{ sid }}/ignore" class="row">
+  <input type="hidden" name="next" value="/people">
+  <button class="btn" type="submit">Not a person (cartoon, statue, animal…)</button>
+</form>
+{% endblock %}

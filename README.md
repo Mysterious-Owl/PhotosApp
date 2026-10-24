@@ -6,7 +6,11 @@ Local-first face grouping and search for your own photo library. Everything runs
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Design review: [docs/PLAN_REVIEW.md](docs/PLAN_REVIEW.md)
 
-**Status:** milestone M1 (core indexing, command line). Grouping and the web UI come in M2.
+**Status:** M1 (indexing) done; M2 (People screen in the browser) usable. Search comes in M3.
+
+## Quick start
+
+Double-click **`FaceGroup.cmd`**. The first time, it installs what it needs (a few minutes) and downloads the face model (~275 MB). Your browser then opens the People screen: add your photo folder, wait for the scan, then name the suggested groups.
 
 ## Setup (Windows)
 
@@ -23,10 +27,21 @@ python -m uv run facegroup download-models   # ~275 MB, once
 
 ## Use
 
+**People screen** (`FaceGroup.cmd`, or `python -m uv run facegroup ui`):
+
+- **Who is this?** shows groups of faces that look like one person. Type a name and Save, or open **Review** to untick faces that belong to someone else. Cartoons, statues and animals: **Not a person**.
+- Once a person has a name, FaceGroup finds them in other photos by itself. Those faces get a dashed outline on the person's page until you confirm them (**Yes, it's them**) or remove them (**Not them**). A face you remove from a person is never put back automatically.
+- **Merge** joins two people. **New person** splits selected faces off. **Undo** reverses the last change.
+- **Forget this person** deletes their faces from FaceGroup for good, and later scans skip them. Photos are never touched.
+- The link the app opens only works on this computer, for this session.
+
+**Command line:**
+
 ```powershell
 python -m uv run facegroup scan "D:\Photos"   # add a folder and index it
 python -m uv run facegroup scan               # rescan every folder: only new/changed files are processed
 python -m uv run facegroup status             # counts, plus files that failed and why
+python -m uv run facegroup people             # people and suggested groups, as text
 python -m uv run facegroup retry              # re-queue failed files
 ```
 

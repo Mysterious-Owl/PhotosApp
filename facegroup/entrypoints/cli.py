@@ -148,6 +148,44 @@ def retry() -> None:
         a.close()
 
 
+@app.command()
+def ui(
+    port: int = typer.Option(None, help="Port on 127.0.0.1 (default from config: 8765)."),
+    scan_on_start: bool = typer.Option(True, "--scan/--no-scan", help="Look for new photos when it starts."),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the browser automatically."),
+) -> None:
+    """Open the People screen in your browser. Ctrl+C to quit."""
+    import secrets
+    import webbrowser
+
+    import uvicorn
+
+    from facegroup.entrypoints.scheduler import Scheduler
+    from facegroup.entrypoints.web.server import create_app
+
+    settings = load_settings()
+    setup_logging(settings)
+    port = port or settings.port
+    scheduler = Scheduler()
+    a = build(settings, progress=scheduler.progress, should_stop=scheduler.should_stop)
+    try:
+        a.indexing.recover()
+        scheduler.attach(a)
+        scheduler.start()
+        if scan_on_start and a.library.roots():
+            scheduler.request_scan()
+        token = secrets.token_urlsafe(32)
+        url = f"http://127.0.0.1:{port}/login?t={token}"
+        web = create_app(a, scheduler, token, port)
+        typer.echo(f"FaceGroup is running. Open this link (it works only on this computer, this session):\n  {url}")
+        if open_browser:
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        uvicorn.run(web, host="127.0.0.1", port=port, log_level="warning")
+    finally:
+        scheduler.stop()
+        a.close()
+
+
 @app.command("download-models")
 def download_models() -> None:
     """Download the face model now instead of on first scan."""

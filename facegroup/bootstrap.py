@@ -22,6 +22,7 @@ from facegroup.domain.policies import QualityGate
 from facegroup.ports.face import FaceAnalyzer
 from facegroup.services.indexing import IndexingService, IndexingSettings, Progress
 from facegroup.services.library import LibraryService
+from facegroup.services.media import MediaService
 from facegroup.services.people import PeopleService, SuggestPolicy
 
 
@@ -35,6 +36,7 @@ class App:
     library: LibraryService
     indexing: IndexingService
     people: PeopleService
+    media: MediaService
     _writer: DbWriter
     _lock: InstanceLock
 
@@ -126,4 +128,5 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
                       settings.suggest_merge_similarity, settings.suggest_min_group),
         on_forget=remove_crops,
     )
-    return App(settings, store, people_store, cache, decoder, library, indexing, people, writer, lock)
+    media = MediaService(store, people_store, decoder, cache)
+    return App(settings, store, people_store, cache, decoder, library, indexing, people, media, writer, lock)

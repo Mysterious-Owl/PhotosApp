@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}People{% endblock %} · FaceGroup</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body hx-boost="true">
+  <header class="bar">
+    <a class="brand" href="/people">FaceGroup</a>
+    <div id="status" class="status status-{{ status.state }}" data-version="{{ status.version }}">
+      <span class="dot"></span><span class="msg">{{ status.message }}</span>
+    </div>
+    <form method="post" action="/scan">
+      <input type="hidden" name="next" value="{{ request.url.path }}">
+      <button type="submit" class="btn">Scan now</button>
+    </form>
+    <form method="post" action="/undo">
+      <input type="hidden" name="next" value="{{ request.url.path }}">
+      <button type="submit" class="btn" title="Undo the last people change">Undo</button>
+    </form>
+  </header>
+  <main>
+    {% block main %}{% endblock %}
+  </main>
+</body>
+</html>

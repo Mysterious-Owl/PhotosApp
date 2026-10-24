@@ -237,7 +237,7 @@ How to reduce it:
 | Milestone | Scope | Done when |
 |---|---|---|
 | M1 Core ✅ | Layered skeleton, config, SQLite schema + migrations, writer thread, scanner with OneDrive placeholder check, derive stage, job queue, buffalo_l ONNX adapter, CLI (`facegroup scan <dir>`), unit tests with fake adapters | 10k photos index without crashing, resume after being killed, and peak RAM is measured |
-| M2 People | k-NN assignment, cluster suggestions, people screen with accept/merge/split/move/reject and undo, local API security | A 2k-photo library can be cleaned up in under 15 minutes, and property tests show no user decision is ever overwritten |
+| M2 People (steps 1–2 ✅, evaluation open) | k-NN assignment, cluster suggestions, people screen with accept/merge/split/move/reject and undo, local API security | A 2k-photo library can be cleaned up in under 15 minutes, and property tests show no user decision is ever overwritten |
 | M3 Visual search | Image-text fingerprints, search bar, filters (person, date, folder) | "beach sunset" returns relevant images on the test set |
 | M4 Text | OCR, optional captions, text fingerprints, combined search | Search for words that appear in images (receipts, signs) |
 | M5 Video and polish | Video frame sampling + face tracks, folder watching, installer, evaluation report | One-click Windows install on a clean machine |

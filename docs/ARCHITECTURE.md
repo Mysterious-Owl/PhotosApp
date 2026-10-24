@@ -550,3 +550,13 @@ Where the M1 code deliberately differs from, or adds to, the design above:
 - **Re-detection keeps face rows:** new boxes that overlap old ones (IoU > 0.5) reuse the old row, so labels survive re-running the face stage. Old faces with a person assigned are never deleted.
 - **`rel_path` is stored exactly as on disk**, not NFC-normalised, so the stored path always opens the file.
 - **Tables not needed until M2** (`face_reject`, `people_event`, `suppressed_face`) are not created yet; they arrive in migration 0002.
+
+## 10. M2 implementation notes
+
+- **Suggestions = cluster, then clean.** HDBSCAN (leaf selection, PCA to 64 dims above 5,000 faces) proposes groups. Members whose mean similarity to the *rest* of the group is below 0.40 are dropped, then groups whose faces average ≥ 0.55 are merged (average linkage, computed from summed vectors). Tuned on a real library: see docs/EVALUATION.md §3b. This replaces the "split groups holding rejected faces" step in §5b: suggestions only ever contain unassigned faces, and "add to existing person" skips faces rejected for that person.
+- **Automatic assignment is recomputed** for every face nobody decided (unassigned or `auto`) after each change, so a correction propagates. The SQL `WHERE assigned_by IS NULL OR assigned_by='auto'` guarantees user decisions are never overwritten, and a Hypothesis property test checks it over random action sequences.
+- **An explicit move overrides an earlier rejection** for that face and person (undoable).
+- **"Not a person"** is one hidden person of kind `ignored`. Its confirmed faces vote like any other, so similar cartoon or animal faces follow automatically.
+- **"Forget" clears undo history,** so a forgotten face cannot be brought back with Undo.
+- **Scheduler:** one thread that runs scan → derive → faces → people refresh on request. The UI streams its status over SSE (the server polls it twice a second and sends only changes).
+- **UI:** server-rendered Jinja templates, htmx 2.0.4 (`hx-boost`) served locally, about 40 lines of plain JS for live status and select-all. Every image is served by id; HEIC/TIFF are converted to JPEG for the browser.
