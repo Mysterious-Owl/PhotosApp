@@ -22,14 +22,37 @@
   }
   connect();
 
+  function updateCount() {
+    document.querySelectorAll(".selected-count").forEach((el) => {
+      const form = el.closest("form");
+      const n = form ? form.querySelectorAll("input[name=face]:checked").length : 0;
+      el.textContent = n ? `${n} selected` : "";
+    });
+  }
+
+  document.addEventListener("change", (e) => {
+    if (e.target.matches("input[name=face]")) updateCount();
+  });
+
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".select-toggle");
     if (!btn) return;
-    const form = document.getElementById(btn.dataset.target);
-    const boxes = [...form.querySelectorAll('input[type=checkbox][name=face]')]
+    const scope = document.getElementById(btn.dataset.target);
+    const boxes = [...scope.querySelectorAll("input[type=checkbox][name=face]")]
       .filter((b) => !btn.dataset.only || b.dataset[btn.dataset.only]);
     const turnOn = !boxes.every((b) => b.checked);
     boxes.forEach((b) => (b.checked = turnOn));
-    if (btn.dataset.target === "review") btn.textContent = turnOn ? "Untick all" : "Tick all";
+    updateCount();
   });
+
+  // Acting on nothing would be a confusing no-op: say so instead. Capture phase, so it runs before htmx.
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (!form.querySelector("input[name=face]") || form.querySelector("input[name=face]:checked")) return;
+    if (e.submitter && e.submitter.name === "action") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      alert("Select one or more faces first.");
+    }
+  }, true);
 })();

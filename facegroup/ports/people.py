@@ -59,7 +59,7 @@ class Clusterer(Protocol):
 
 class PeopleStore(Protocol):
     def confirmed_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """(face_ids, person_ids, vectors) of faces the user confirmed."""
+        """(face_ids, person_ids, vectors) of faces the user confirmed for real people ("Not a person" excluded)."""
         ...
 
     def votable_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, list[int | None]]:
@@ -69,6 +69,8 @@ class PeopleStore(Protocol):
     def unassigned_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """(face_ids, vectors, qualities) of faces with no person, excluding suppressed ones."""
         ...
+
+    def face_vectors(self, face_ids: list[int], model_id: str) -> tuple[list[int], np.ndarray]: ...
 
     def rejections(self) -> dict[int, set[int]]: ...
 

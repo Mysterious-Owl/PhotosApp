@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from facegroup.entrypoints.scheduler import Scheduler
 from facegroup.entrypoints.web.server import COOKIE, create_app
-from tests.conftest import count, make_photo
+from tests.conftest import count, make_photo, write_sql
 from tests.unit.test_people_service import Library
 
 PORT = 8765
@@ -242,3 +242,63 @@ def test_faces_link_to_their_photo_with_the_face_outlined(make_app, library_dir)
     photo = client.get(f"/photos/{media}?face={face}").text
     assert f'id="face{face}"' in photo and "box highlight" in photo
     assert f"Face {pid}" in photo
+
+
+class TestBreakingUpGroups:
+    def test_act_on_picked_faces_only_and_keep_the_rest(self, env):
+        app, _, client = env
+        login(client)
+        sid = app.people.suggestions()[0].id
+        faces = app.people.suggestion_faces(sid)
+        picked = faces[:2]
+        r = client.post(f"/suggestions/{sid}/faces", data={"face": [str(f) for f in picked], "action": "ignore"})
+        assert r.status_code == 303 and r.headers["location"] == f"/suggestions/{sid}"  # back to the rest
+        hidden = app.people.hidden()
+        assert hidden is not None
+        assert {count(app, "SELECT person_id FROM face WHERE id=?", f) for f in picked} == {hidden.id}
+        rest = app.people.suggestion_faces(sid)
+        assert rest and not set(rest) & set(picked)  # the other faces were NOT marked
+        r = client.post(f"/suggestions/{sid}/faces", data={"face": [str(f) for f in rest], "action": "new", "name": "Ann"})
+        assert r.headers["location"] == "/people"  # group used up
+        assert app.people.person(count(app, "SELECT person_id FROM face WHERE id=?", rest[0])).name == "Ann"
+
+    def test_faces_from_another_group_are_ignored(self, env):
+        app, _, client = env
+        login(client)
+        s = app.people.suggestions()
+        other = app.people.suggestion_faces(s[1].id)[0]
+        client.post(f"/suggestions/{s[0].id}/faces", data={"face": [str(other)], "action": "new"})
+        assert count(app, "SELECT person_id FROM face WHERE id=?", other) is None
+
+    def test_overview_has_no_whole_group_not_a_person_and_links_the_hidden_group(self, env):
+        app, _, client = env
+        login(client)
+        assert "/ignore" not in client.get("/people").text
+        app.people.not_a_person(face_ids=app.people.suggestion_faces(app.people.suggestions()[0].id)[:1])
+        html = client.get("/people").text
+        assert f"/people/{app.people.hidden().id}" in html and "Not a person: 1" in html
+
+    def test_hidden_page_can_send_faces_back(self, env):
+        app, _, client = env
+        login(client)
+        face = app.people.suggestion_faces(app.people.suggestions()[0].id)[0]
+        app.people.not_a_person(face_ids=[face])
+        hid = app.people.hidden().id
+        page = client.get(f"/people/{hid}").text
+        assert "This is a person" in page and "Forget this person" not in page
+        client.post(f"/people/{hid}/faces", data={"face": [str(face)], "action": "restore"})
+        assert count(app, "SELECT person_id FROM face WHERE id=?", face) != hid
+        app.people.refresh()
+        assert count(app, "SELECT person_id FROM face WHERE id=?", face) != hid  # not pulled back automatically
+
+    def test_review_page_shows_parts_for_a_mixed_group(self, env):
+        app, lib, client = env
+        login(client)
+        a, b = app.people.suggestions()[:2]
+        faces_a, faces_b = app.people.suggestion_faces(a.id), app.people.suggestion_faces(b.id)
+        # Force a mixed group: put one of B's faces into A's suggestion.
+        write_sql(app, "INSERT INTO suggestion_face(suggestion_id, face_id) VALUES(?, ?)", a.id, faces_b[0])
+        html = client.get(f"/suggestions/{a.id}").text
+        assert "Part A" in html and "Part B" in html and "Select this part" in html
+        part_b = html.split("Part B")[1]
+        assert f'value="{faces_b[0]}"' in part_b and not any(f'value="{f}"' in part_b for f in faces_a)

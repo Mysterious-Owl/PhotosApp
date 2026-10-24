@@ -253,6 +253,16 @@ def test_combine_can_rename(lib):
     assert people.person(target).name == "Grandpa"
 
 
+def test_not_a_person_never_pulls_in_other_faces(lib):
+    """User report: marking a few faces 'Not a person' seemed to mark the whole group. Marked faces must not vote."""
+    people = lib.app.people
+    people.refresh()
+    faces = people.suggestion_faces(people.suggestions()[0].id)
+    hid = people.not_a_person(face_ids=faces[:1])
+    people.refresh()
+    assert [f for f in lib.truth if assigned(lib.app, f) == hid] == faces[:1]
+
+
 def test_not_a_person_goes_to_one_hidden_group(lib):
     people = lib.app.people
     people.refresh()

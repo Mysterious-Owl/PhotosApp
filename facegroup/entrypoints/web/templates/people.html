@@ -14,7 +14,7 @@
 {% if suggestions %}
 <section>
   <h1>Who is this? <span class="count">{{ suggestions|length }} group{{ 's' if suggestions|length != 1 }} to review</span></h1>
-  <p class="hint">Each group is faces that look like one person. Name it (or just Save: it becomes "Face" plus a number) and FaceGroup finds them in new photos. Open a group to remove faces that do not belong. Same person in several groups? Tick them and Combine.</p>
+  <p class="hint">Each group is faces that look like one person. Name it (or just Save: it becomes "Face" plus a number) and FaceGroup finds them in new photos. Mixed group, or cartoons and statues? Open Review to split it into parts. Same person in several groups? Tick them and Combine.</p>
   <div class="suggestions">
     {% for s in suggestions %}
     <article class="card suggestion" id="s{{ s.id }}">
@@ -31,10 +31,6 @@
         <button class="btn primary" type="submit">Save</button>
         <a class="btn" href="/suggestions/{{ s.id }}">Review</a>
       </form>
-      <form method="post" action="/suggestions/{{ s.id }}/ignore">
-        <input type="hidden" name="next" value="/people">
-        <button class="link" type="submit">Not a person</button>
-      </form>
     </article>
     {% endfor %}
   </div>
@@ -42,7 +38,8 @@
 {% endif %}
 
 <section>
-  <h1>People <span class="count">{{ people|length }}</span></h1>
+  <h1>People <span class="count">{{ people|length }}</span>
+    {% if hidden %}<a class="count" href="/people/{{ hidden.id }}">· Not a person: {{ hidden.faces }}</a>{% endif %}</h1>
   {% if people %}
   <div class="people">
     {% for p in people %}

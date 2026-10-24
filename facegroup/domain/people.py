@@ -114,3 +114,24 @@ def merge_groups(groups: list[np.ndarray], vectors: np.ndarray, min_similarity: 
         row[i] = -np.inf
         sim[i, :] = sim[:, i] = row
     return [g for g, keep in zip(groups, alive) if keep]
+
+
+def split_into_parts(vectors: np.ndarray, min_similarity: float = 0.45) -> list[np.ndarray]:
+    """Break a group into parts of faces that look like the same person, biggest part first.
+
+    Average linkage, cut where the faces of two parts average less than min_similarity to each other (the same
+    cosine scale as the grouping thresholds). Within a part, faces are in similarity order, so near-duplicates sit
+    together. Used to show a mixed group as "Part A / Part B" so the odd faces out are easy to pick.
+    """
+    n = len(vectors)
+    if n <= 2:
+        return [np.arange(n)] if n else []
+    from scipy.cluster.hierarchy import fcluster, leaves_list, linkage
+
+    tree = linkage(vectors.astype(np.float64), method="average", metric="cosine")
+    labels = fcluster(tree, t=1.0 - min_similarity, criterion="distance")
+    order = leaves_list(tree)
+    parts: dict[int, list[int]] = {}
+    for i in order:
+        parts.setdefault(int(labels[i]), []).append(int(i))
+    return [np.array(p) for p in sorted(parts.values(), key=len, reverse=True)]

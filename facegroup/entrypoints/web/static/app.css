@@ -130,3 +130,6 @@ body:has(.pick input:checked) .combine-bar { display: flex; }
   color: #fff; font-size: .75rem; line-height: 1.3; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 .photo-frame .box.highlight { border-color: var(--warn); border-width: 3px; box-shadow: 0 0 0 2px rgba(0,0,0,.6); }
 .faces-in a.current img { outline: 3px solid var(--warn); }
+
+.part { margin: 8px 0 18px; }
+.part-head { font-size: 1rem; margin: 12px 0 6px; display: flex; gap: 10px; align-items: baseline; }

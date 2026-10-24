@@ -27,8 +27,11 @@ class SqlitePeopleStore(SqliteBase):
 
     def confirmed_faces(self, model_id: str):
         rows = self._read().execute(
+            # Only real people vote. Faces marked "Not a person" never pull others in automatically: one marked
+            # face of a real person would otherwise drag that person's look-alikes into the hidden group.
             "SELECT f.id, f.person_id, e.vector FROM face f JOIN face_embedding e ON e.face_id=f.id "
-            "WHERE e.model_id=? AND f.assigned_by='user' AND f.person_id IS NOT NULL ORDER BY f.id",
+            "JOIN person p ON p.id=f.person_id "
+            "WHERE e.model_id=? AND f.assigned_by='user' AND p.kind='person' ORDER BY f.id",
             (model_id,),
         ).fetchall()
         return (np.array([r[0] for r in rows], np.int64), np.array([r[1] for r in rows], np.int64),
@@ -50,6 +53,15 @@ class SqlitePeopleStore(SqliteBase):
         ).fetchall()
         return (np.array([r[0] for r in rows], np.int64), _stack([r[1] for r in rows]),
                 np.array([r[2] for r in rows], np.float32))
+
+    def face_vectors(self, face_ids: list[int], model_id: str) -> tuple[list[int], np.ndarray]:
+        if not face_ids:
+            return [], np.zeros((0, 512), np.float32)
+        rows = self._read().execute(
+            "SELECT face_id, vector FROM face_embedding WHERE model_id=? AND face_id IN (SELECT value FROM json_each(?))",
+            (model_id, json.dumps([int(f) for f in face_ids])),
+        ).fetchall()
+        return [r[0] for r in rows], _stack([r[1] for r in rows])
 
     def rejections(self) -> dict[int, set[int]]:
         out: dict[int, set[int]] = {}

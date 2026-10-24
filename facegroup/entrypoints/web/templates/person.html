@@ -2,6 +2,13 @@
 {% block title %}{{ person|label }}{% endblock %}
 {% block main %}
 <p><a href="/people">← People</a></p>
+{% set hidden_group = person.kind == 'ignored' %}
+{% if hidden_group %}
+<h1>Not a person <span class="count">{{ person.faces }} faces</span></h1>
+<p class="hint">Faces you marked as not a person (cartoons, statues, animals…). Similar faces found later are put here
+  automatically. Pick any that are real people and choose <strong>This is a person</strong> to send them back to the
+  review groups, or move them straight to someone.</p>
+{% else %}
 <section class="person-head">
   {% if person.cover_face_id %}<img src="/faces/{{ person.cover_face_id }}.jpg" alt="" width="120" height="120">{% endif %}
   <div>
@@ -32,12 +39,17 @@
     </div>
   </div>
 </section>
+{% endif %}
 
 <form method="post" action="/people/{{ person.id }}/faces" id="faces">
   <div class="toolbar row sticky">
     <span class="hint">Select faces, then:</span>
+    {% if hidden_group %}
+    <button class="btn primary" type="submit" name="action" value="restore">This is a person</button>
+    {% else %}
     <button class="btn primary" type="submit" name="action" value="confirm">Yes, it's them</button>
     <button class="btn" type="submit" name="action" value="reject">Not them</button>
+    {% endif %}
     {% if others %}
     <select name="target" aria-label="Move to">
       <option value="">Move to…</option>
@@ -46,11 +58,22 @@
     <button class="btn" type="submit" name="action" value="move">Move</button>
     {% endif %}
     <button class="btn" type="submit" name="action" value="split">New person</button>
-    <button class="btn" type="submit" name="action" value="ignore">Not a person</button>
+    {% if not hidden_group %}<button class="btn" type="submit" name="action" value="ignore">Not a person</button>{% endif %}
+    <span class="selected-count hint"></span>
     <button class="link select-toggle" type="button" data-target="faces" data-only="auto">Select automatic</button>
   </div>
+  {% if parts|length > 1 %}<p class="hint">Faces are grouped into parts that look alike: a small part is often
+    someone else.</p>{% endif %}
+  {% for part in parts %}
+  <section class="part" id="part{{ loop.index }}">
+    {% if parts|length > 1 %}
+    <h2 class="part-head">Part {{ "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[loop.index0] if loop.index0 < 26 else loop.index }}
+      <span class="count">{{ part|length }} face{{ 's' if part|length != 1 }}</span>
+      <button class="link select-toggle" type="button" data-target="part{{ loop.index }}">Select this part</button>
+    </h2>
+    {% endif %}
   <div class="grid">
-    {% for f in faces %}
+    {% for f in part %}
     <label class="face {{ 'auto' if f.assigned_by != 'user' }}" title="{{ 'Found automatically' if f.assigned_by != 'user' else 'Confirmed' }}">
       <input type="checkbox" name="face" value="{{ f.id }}" {{ 'data-auto=1' if f.assigned_by != 'user' }}>
       <img src="/faces/{{ f.id }}.jpg" alt="" width="112" height="112" loading="lazy">
@@ -58,5 +81,7 @@
     </label>
     {% endfor %}
   </div>
+  </section>
+  {% endfor %}
 </form>
 {% endblock %}

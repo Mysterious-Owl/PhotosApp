@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from facegroup.domain.people import AssignPolicy, knn_assign, merge_groups, prune_group
+from facegroup.domain.people import AssignPolicy, knn_assign, merge_groups, prune_group, split_into_parts
 from facegroup.ports.people import Clusterer, PeopleChange, PeopleStore
 
 log = logging.getLogger(__name__)
@@ -28,13 +28,14 @@ class SuggestPolicy:
 class PeopleService:
     def __init__(self, store: PeopleStore, clusterer: Clusterer, model_id: str,
                  assign_policy: AssignPolicy = AssignPolicy(), suggest_policy: SuggestPolicy = SuggestPolicy(),
-                 on_forget: Callable[[list[int]], None] = lambda ids: None) -> None:
+                 on_forget: Callable[[list[int]], None] = lambda ids: None, part_similarity: float = 0.45) -> None:
         self._store = store
         self._clusterer = clusterer
         self._model_id = model_id
         self._assign = assign_policy
         self._suggest = suggest_policy
         self._on_forget = on_forget
+        self._part_similarity = part_similarity
 
     # -- automatic steps ------------------------------------------------------------------------------
 
@@ -98,6 +99,19 @@ class PeopleService:
     def suggestion_faces(self, suggestion_id: int) -> list[int]:
         return self._store.suggestion_faces(suggestion_id)
 
+    def parts(self, face_ids: list[int]) -> list[list[int]]:
+        """The faces split into parts that each look like one person, biggest first (for breaking up a mixed
+        group). Faces without an embedding come last, as their own part."""
+        ids, vectors = self._store.face_vectors(face_ids, self._model_id)
+        parts = [[ids[i] for i in part] for part in split_into_parts(vectors, self._part_similarity)]
+        missing = [f for f in face_ids if f not in set(ids)]
+        return parts + ([missing] if missing else [])
+
+    def hidden(self):
+        """The 'Not a person' group, if it exists."""
+        pid = self._store.ignored_person_id()
+        return self._store.person(pid) if pid else None
+
     # -- user decisions (each one atomic, logged, undoable) -----------------------------------------------
 
     def accept(self, suggestion_id: int, name: str = "", exclude: set[int] = frozenset()) -> int:
@@ -117,7 +131,8 @@ class PeopleService:
         return person_id
 
     def not_a_person(self, suggestion_id: int | None = None, face_ids: list[int] | None = None) -> int:
-        """Cartoons, statues, animals. They go to one hidden 'Not a person' group, and similar faces follow."""
+        """Cartoons, statues, animals. Only these faces go to the hidden 'Not a person' group: nothing is added to it
+        automatically, because a wrong mark would otherwise drag a real person's look-alikes along."""
         faces = list(face_ids or []) + (self._store.suggestion_faces(suggestion_id) if suggestion_id else [])
         ignored = self._store.ignored_person_id()
         change = PeopleChange("ignore", face_ids=faces, clear_suggestions=[suggestion_id] if suggestion_id else [])
@@ -179,6 +194,12 @@ class PeopleService:
         pid = self._store.apply_change(PeopleChange("split", face_ids=face_ids, new_person_name=name))
         self.assign()
         return pid
+
+    def restore(self, face_ids: list[int]) -> None:
+        """Out of 'Not a person' and back to unsorted; they will not be put back there automatically."""
+        ignored = self._store.ignored_person_id()
+        if ignored is not None:
+            self.reject(face_ids, ignored)
 
     def reject(self, face_ids: list[int], person_id: int) -> None:
         """'Not this person': unassign and remember, so no automatic step puts them back."""

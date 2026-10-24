@@ -1,6 +1,6 @@
 import numpy as np
 
-from facegroup.domain.people import AssignPolicy, knn_assign, merge_groups, prune_group
+from facegroup.domain.people import AssignPolicy, knn_assign, merge_groups, prune_group, split_into_parts
 
 
 def unit(v):
@@ -82,3 +82,21 @@ def test_merge_groups_joins_split_person_but_not_strangers():
     merged = merge_groups([a1, b, a2, c], vecs, 0.55)
     assert sorted(sorted(set(labels[g].tolist())) for g in merged) == [[100], [101], [102]]
     assert sorted(len(g) for g in merged) == [6, 6, 6]
+
+
+def test_split_into_parts_separates_a_mixed_group():
+    vecs, labels, _ = identities(n_people=3, per=6)
+    # A "mixed group": 6 faces of A, 2 of B, 1 of C, shuffled.
+    pick = np.r_[np.flatnonzero(labels == 100), np.flatnonzero(labels == 101)[:2], np.flatnonzero(labels == 102)[:1]]
+    rng = np.random.default_rng(3)
+    pick = pick[rng.permutation(len(pick))]
+    parts = split_into_parts(vecs[pick])
+    got = [sorted(set(labels[pick][p].tolist())) for p in parts]
+    assert got == [[100], [101], [102]]  # biggest part first, each part one person
+    assert sorted(np.concatenate(parts).tolist()) == list(range(len(pick)))  # every face exactly once
+
+
+def test_split_into_parts_keeps_one_person_together():
+    vecs, _, _ = identities(n_people=1, per=8)
+    assert len(split_into_parts(vecs)) == 1
+    assert split_into_parts(vecs[:0]) == []

@@ -93,7 +93,7 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
 
     @web.get("/people", response_class=HTMLResponse)
     def people_page(request: Request):
-        return page(request, "people.html", people=app.people.people(),
+        return page(request, "people.html", people=app.people.people(), hidden=app.people.hidden(),
                     suggestions=app.people.suggestions(sample=6), roots=app.library.roots(),
                     counts=app.store.status())
 
@@ -103,7 +103,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         if not faces:
             return RedirectResponse("/people", status_code=303)
         media_of = {f: (app.people_store.face_media(f) or (0, None))[0] for f in faces}
-        return page(request, "suggestion.html", sid=sid, faces=faces, people=app.people.people(), media_of=media_of)
+        return page(request, "suggestion.html", sid=sid, faces=faces, parts=app.people.parts(faces),
+                    people=app.people.people(), media_of=media_of)
 
     @web.get("/people/{pid}", response_class=HTMLResponse)
     def person_page(request: Request, pid: int):
@@ -111,7 +112,10 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         if person is None:
             return RedirectResponse("/people", status_code=303)
         others = [p for p in app.people.people() if p.id != pid]
-        return page(request, "person.html", person=person, faces=app.people.person_faces(pid), others=others)
+        faces = app.people.person_faces(pid)
+        by_id = {f.id: f for f in faces}
+        parts = [[by_id[i] for i in part] for part in app.people.parts(list(by_id))]
+        return page(request, "person.html", person=person, faces=faces, parts=parts, others=others)
 
     # -- suggestion actions -----------------------------------------------------------------------------
 
@@ -130,10 +134,22 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
             pid = app.people.accept(sid, str(form.get("name", "")), exclude)
         return back(request, form.get("next") or f"/people#p{pid}")
 
-    @web.post("/suggestions/{sid}/ignore")
-    def ignore(request: Request, sid: int, next: str = Form("/people")):
-        app.people.not_a_person(sid)
-        return back(request, next)
+    @web.post("/suggestions/{sid}/faces")
+    async def suggestion_faces_action(request: Request, sid: int):
+        """Act on the picked faces only; the rest of the group stays, so a mixed group can be broken up."""
+        form = await request.form()
+        allowed = set(app.people.suggestion_faces(sid))
+        faces = [f for f in _ids(form.getlist("face")) if f in allowed]
+        action, target = form.get("action", ""), str(form.get("target", ""))
+        if faces:
+            if action == "new":
+                app.people.split(faces, str(form.get("name", "")))
+            elif action == "add" and target.isdigit():
+                app.people.move(faces, int(target))
+            elif action == "ignore":
+                app.people.not_a_person(face_ids=faces)
+        left = app.people.suggestion_faces(sid)
+        return back(request, f"/suggestions/{sid}" if left else "/people")
 
     # -- person actions ---------------------------------------------------------------------------------
 
@@ -172,6 +188,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
                 return back(request, f"/people/{new}")
             elif action == "ignore":
                 app.people.not_a_person(face_ids=faces)
+            elif action == "restore":
+                app.people.restore(faces)
         return back(request, f"/people/{pid}")
 
     @web.post("/people/combine")
