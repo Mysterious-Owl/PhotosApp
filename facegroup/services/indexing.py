@@ -49,7 +49,9 @@ class IndexingService:
     def __init__(self, store: Store, decoder: MediaDecoder, cache: ImageCache,
                  face_analyzer_factory: Callable[[], FaceAnalyzer], face_model_id: str,
                  gate: QualityGate, settings: IndexingSettings = IndexingSettings(),
-                 progress: Progress | None = None, should_stop: Callable[[], bool] = lambda: False) -> None:
+                 progress: Progress | None = None, should_stop: Callable[[], bool] = lambda: False,
+                 suppressed: Callable[[str], np.ndarray] = lambda model_id: np.zeros((0, 512), np.float32),
+                 suppress_similarity: float = 0.5) -> None:
         self._store = store
         self._decoder = decoder
         self._cache = cache
@@ -59,6 +61,9 @@ class IndexingService:
         self._s = settings
         self._progress = progress or (lambda *a: None)
         self._should_stop = should_stop
+        self._suppressed_source = suppressed
+        self._suppress_similarity = suppress_similarity
+        self._suppressed = np.zeros((0, 512), np.float32)
 
     def recover(self) -> int:
         """Call once at start-up, while holding the instance lock."""
@@ -106,6 +111,7 @@ class IndexingService:
                         break
                     if analyzer is None:
                         analyzer = self._make_analyzer()  # loaded only when there is work
+                        self._suppressed = self._suppressed_source(analyzer.model_id)
                     images = [pool.submit(self._working_image, j) for j in jobs]
                     for job, image in zip(jobs, images):
                         ok = self._guarded(job, lambda j: self._faces_one(j, image.result(), analyzer), report)
@@ -124,9 +130,17 @@ class IndexingService:
             return self._decoder.decode(self._store.media_path(job.media_id)).rgb
 
     def _faces_one(self, job: Job, image: np.ndarray, analyzer: FaceAnalyzer) -> None:
-        faces = [f for f in analyzer.analyze(image) if self._gate.accepts(f)]
+        faces = [f for f in analyzer.analyze(image) if self._gate.accepts(f) and not self._is_suppressed(f)]
         qualities = [self._gate.score(f) for f in faces]
-        self._store.finish_faces(job, faces, qualities, analyzer.detector_id)
+        face_ids = self._store.finish_faces(job, faces, qualities, analyzer.detector_id)
+        for face_id, face in zip(face_ids, faces):
+            self._cache.write_face_crop(face_id, image, face.bbox)
+
+    def _is_suppressed(self, face) -> bool:
+        """Faces of people the user asked to forget are not stored again on a rescan."""
+        if face.embedding is None or len(self._suppressed) == 0:
+            return False
+        return float((self._suppressed @ face.embedding).max()) >= self._suppress_similarity
 
     def _cleanup(self, item_ids: list[int]) -> None:
         if self._s.keep_working_images:

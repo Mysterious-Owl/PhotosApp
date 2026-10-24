@@ -32,7 +32,8 @@ def assert_not_synced(path: Path) -> None:
 
 
 def connect(db_path: Path, *, read_only: bool = False) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=30, isolation_level=None)  # autocommit; we BEGIN explicitly
+    # check_same_thread=False only so close() can run from any thread; each connection is used by one thread.
+    conn = sqlite3.connect(db_path, timeout=30, isolation_level=None, check_same_thread=False)  # autocommit
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")

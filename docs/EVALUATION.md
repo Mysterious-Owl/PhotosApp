@@ -52,6 +52,22 @@ The best LFW threshold is about **0.24**. The prototype's 0.48 would have reject
 
 This library is small and mostly screenshots. It does not include phone camera photos (HEIC, 12–50 MP), so speed and decoding for those remain untested on real data.
 
+## 3b. Suggested groups on the real library (M2 tuning, 2026-10-24)
+
+The 153 faces from §3 were clustered (HDBSCAN, leaf selection) and reviewed as contact sheets.
+
+| Version | Groups | Mixed groups (wrong) | Same person split | Faces grouped |
+|---|---|---|---|---|
+| v1: drop members far from the group *centre* (< 0.35) | 23 | **3 people-groups mixed** (+2 mixed cartoon/animal groups) | 3 people split across 7 groups | 104 |
+| v2: drop members whose mean similarity to the *other* members is < 0.40, then merge groups whose faces average ≥ 0.55 | 15 | **0** | 0 seen | 87 |
+
+Why v1 failed: in a group of three, two faces of one person pull the centre towards themselves, so a stranger still looked close to it (centre 0.53, but 0.11 to the other members). Measured over all groups:
+
+- Every pure group had all members at ≥ 0.52 mean similarity to the rest; every mixed group had a member at ≤ 0.35. The cut-off is 0.40.
+- Split groups of one person averaged 0.67–0.87 face-to-face; the closest pair of different people averaged 0.35. The merge level is 0.55.
+
+v2 trades coverage for purity on purpose: a face left unsorted costs one click later, while a stranger inside a person is easy to miss. Both thresholds are settings (`suggest_member_similarity`, `suggest_merge_similarity`). They come from one small library (about 25 people) and should be re-checked on a larger one.
+
 ## 4. Fairness: what is known and what is not
 
 InsightFace publishes buffalo_l results on its multi-racial benchmark (MR, a strict true-accept rate at a very low false-accept rate, so the numbers are lower than LFW and not comparable to it):

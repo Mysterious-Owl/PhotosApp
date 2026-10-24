@@ -87,6 +87,9 @@ def scan(
                 typer.echo(f"  {report.stage.value}: {report.done} done, {report.failed} failed")
                 for e in report.errors[:5]:
                     typer.echo(f"    ! {e}")
+            if not stop.is_set():
+                changed, groups = a.people.refresh()
+                typer.echo(f"  people: {changed} face(s) matched to known people, {groups} suggested group(s)")
         proc = psutil.Process()
         peak = getattr(proc.memory_info(), "peak_wset", proc.memory_info().rss)
         typer.echo(f"Finished in {time.monotonic() - started:.1f}s, peak memory {peak / 2**30:.2f} GB")
@@ -113,6 +116,26 @@ def status() -> None:
                 typer.echo(f"  [{stage}] {path}: {error}")
     finally:
         a.close()
+
+
+@app.command()
+def people() -> None:
+    """List people and suggested groups."""
+    a = build(load_settings(), face_model_id=_model_id(), analyzer_factory=lambda: None)
+    try:
+        for p in a.people.people():
+            typer.echo(f"  {p.name or '(unnamed)':<30} {p.faces:>5} faces ({p.confirmed} confirmed) in {p.photos} photos")
+        s = a.people.suggestions()
+        typer.echo(f"{len(s)} suggested group(s): " + ", ".join(str(g.size) for g in s[:20]))
+        typer.echo("Open the People screen with: facegroup ui")
+    finally:
+        a.close()
+
+
+def _model_id() -> str:
+    from facegroup.bootstrap import face_analyzer_factory
+
+    return face_analyzer_factory(load_settings())[1]
 
 
 @app.command()

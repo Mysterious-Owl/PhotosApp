@@ -29,24 +29,41 @@ def _placeholders(n: int) -> str:
     return ",".join("?" * n)
 
 
-class SqliteStore:
+class SqliteBase:
+    """Per-thread read-only connections for reads; every write goes through the single DbWriter."""
+
     def __init__(self, db_path: Path, writer: DbWriter, now: Callable[[], datetime] = utc_now) -> None:
         self._db_path = db_path
         self._writer = writer
         self._now = now
         self._local = threading.local()
-
-    # -- plumbing -----------------------------------------------------------------------------
+        self._all_reads: list[sqlite3.Connection] = []
+        self._lock = threading.Lock()
 
     def _read(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
         if conn is None:
             conn = connect(self._db_path, read_only=True)
             self._local.conn = conn
+            with self._lock:
+                self._all_reads.append(conn)
         return conn
 
     def _write(self, fn):
         return self._writer.submit(fn)
+
+    def close(self) -> None:
+        with self._lock:
+            for conn in self._all_reads:
+                try:
+                    conn.close()
+                except sqlite3.ProgrammingError:
+                    pass  # created on another thread; closed when that thread's objects go away
+            self._all_reads.clear()
+        self._local = threading.local()
+
+
+class SqliteStore(SqliteBase):
 
     # -- roots and scanning -------------------------------------------------------------------
 
@@ -241,16 +258,17 @@ class SqliteStore:
         self._write(op)
 
     def finish_faces(self, job: Job, faces: list[DetectedFace], qualities: list[float],
-                     detector_id: str) -> None:
+                     detector_id: str) -> list[int]:
         assert job.item_id is not None
 
-        def op(c: sqlite3.Connection) -> None:
+        def op(c: sqlite3.Connection) -> list[int]:
             old = c.execute(
                 "SELECT id, x1, y1, x2, y2, person_id FROM face WHERE item_id=? AND detector_id=?",
                 (job.item_id, detector_id),
             ).fetchall()
             matches = match_boxes([(r["x1"], r["y1"], r["x2"], r["y2"]) for r in old], [f.bbox for f in faces])
             kept: set[int] = set()
+            ids: list[int] = []
             for i, (face, quality) in enumerate(zip(faces, qualities)):
                 values = (*face.bbox, face.landmarks.astype(np.float32).tobytes(), face.det_score, quality)
                 if i in matches:  # same face re-detected: keep the row, so labels survive
@@ -266,6 +284,7 @@ class SqliteStore:
                         (job.item_id, *values, detector_id),
                     ).lastrowid
                 kept.add(face_id)
+                ids.append(face_id)
                 if face.embedding is not None:
                     c.execute(
                         "INSERT OR REPLACE INTO face_embedding(face_id, model_id, vector) VALUES(?,?,?)",
@@ -276,8 +295,9 @@ class SqliteStore:
                 if r["id"] not in kept and r["person_id"] is None:
                     c.execute("DELETE FROM face WHERE id=?", (r["id"],))
             c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
+            return ids
 
-        self._write(op)
+        return self._write(op)
 
     def fail_job(self, job: Job, error: str, permanent: bool, max_attempts: int,
                  backoff_seconds: int) -> None:
@@ -330,9 +350,3 @@ class SqliteStore:
             "items": c.execute("SELECT COUNT(*) FROM item").fetchone()[0],
         }
         return {"media": media, "jobs": jobs, "counts": faces}
-
-    def close(self) -> None:
-        conn = getattr(self._local, "conn", None)
-        if conn is not None:
-            conn.close()
-            self._local.conn = None

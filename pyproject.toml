@@ -14,6 +14,11 @@ dependencies = [
     "pydantic-settings>=2.6",
     "typer>=0.15",
     "psutil>=6.0",
+    "scikit-learn>=1.5",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.18",
 ]
 
 [project.scripts]
@@ -23,6 +28,7 @@ facegroup = "facegroup.entrypoints.cli:app"
 dev = [
     "pytest>=8.3",
     "hypothesis>=6.120",
+    "httpx>=0.28",
 ]
 
 [build-system]

@@ -7,31 +7,40 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 
+from facegroup.adapters.clustering import HdbscanClusterer
 from facegroup.adapters.instance_lock import InstanceLock
 from facegroup.adapters.media.cache import DiskImageCache
 from facegroup.adapters.media.decoder import PillowDecoder
 from facegroup.adapters.media.files import LocalFileSource
 from facegroup.adapters.storage.db import assert_not_synced, connect, migrate
+from facegroup.adapters.storage.people_store import SqlitePeopleStore
 from facegroup.adapters.storage.sqlite_store import SqliteStore
 from facegroup.adapters.storage.writer import DbWriter
 from facegroup.config import Settings
+from facegroup.domain.people import AssignPolicy
 from facegroup.domain.policies import QualityGate
 from facegroup.ports.face import FaceAnalyzer
 from facegroup.services.indexing import IndexingService, IndexingSettings, Progress
 from facegroup.services.library import LibraryService
+from facegroup.services.people import PeopleService, SuggestPolicy
 
 
 @dataclass
 class App:
     settings: Settings
     store: SqliteStore
+    people_store: SqlitePeopleStore
+    cache: DiskImageCache
+    decoder: PillowDecoder
     library: LibraryService
     indexing: IndexingService
+    people: PeopleService
     _writer: DbWriter
     _lock: InstanceLock
 
     def close(self) -> None:
         self.store.close()
+        self.people_store.close()
         self._writer.close()
         self._lock.release()
 
@@ -76,14 +85,17 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
         raise
 
     store = SqliteStore(settings.db_path, writer)
+    people_store = SqlitePeopleStore(settings.db_path, writer)
+    cache = DiskImageCache(settings.cache_dir, settings.thumbnail_size)
+    decoder = PillowDecoder(settings.working_max_side, settings.max_image_pixels)
     if analyzer_factory is None:
         analyzer_factory, face_model_id = face_analyzer_factory(settings)
     assert face_model_id is not None
 
     indexing = IndexingService(
         store=store,
-        decoder=PillowDecoder(settings.working_max_side, settings.max_image_pixels),
-        cache=DiskImageCache(settings.cache_dir, settings.thumbnail_size),
+        decoder=decoder,
+        cache=cache,
         face_analyzer_factory=analyzer_factory,
         face_model_id=face_model_id,
         gate=QualityGate(settings.min_face_px, settings.min_det_score),
@@ -97,6 +109,21 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
         ),
         progress=progress,
         should_stop=should_stop,
+        suppressed=people_store.suppressed_vectors,
     )
     library = LibraryService(store, LocalFileSource(), settings.missing_grace_days)
-    return App(settings, store, library, indexing, writer, lock)
+
+    def remove_crops(face_ids: list[int]) -> None:
+        for fid in face_ids:
+            cache.delete_face_crop(fid)
+
+    people = PeopleService(
+        people_store,
+        HdbscanClusterer(min_cluster_size=settings.suggest_min_group),
+        face_model_id,
+        AssignPolicy(settings.assign_k, settings.assign_threshold, settings.assign_min_votes),
+        SuggestPolicy(settings.suggest_min_quality, settings.suggest_member_similarity,
+                      settings.suggest_merge_similarity, settings.suggest_min_group),
+        on_forget=remove_crops,
+    )
+    return App(settings, store, people_store, cache, decoder, library, indexing, people, writer, lock)

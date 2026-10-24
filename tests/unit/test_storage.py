@@ -9,10 +9,12 @@ from facegroup.adapters.storage.writer import DbWriter
 
 def test_migrate_is_idempotent(tmp_path):
     conn = connect(tmp_path / "x.db")
-    assert migrate(conn) == 1
-    assert migrate(conn) == 1
+    latest = migrate(conn)
+    assert latest >= 2
+    assert migrate(conn) == latest
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"root", "media", "item", "job", "face", "face_embedding", "person", "settings"} <= tables
+    assert {"root", "media", "item", "job", "face", "face_embedding", "person", "settings",
+            "face_reject", "people_event", "suggestion", "suggestion_face", "suppressed_face"} <= tables
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 

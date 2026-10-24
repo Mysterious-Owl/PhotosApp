@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     keep_working_images: bool = False
     missing_grace_days: int = 30
 
+    # People (M2). Thresholds are cosine similarity; see docs/EVALUATION.md for how they were chosen.
+    assign_k: int = 10
+    assign_threshold: float = 0.42
+    assign_min_votes: int = 2
+    suggest_min_quality: float = 0.15
+    suggest_member_similarity: float = 0.40
+    suggest_merge_similarity: float = 0.55
+    suggest_min_group: int = 3
+
+    # Web UI
+    port: int = 8765
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "facegroup.db"

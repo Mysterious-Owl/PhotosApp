@@ -12,6 +12,7 @@ class DiskImageCache:
     def __init__(self, root: Path, thumbnail_size: int = 320) -> None:
         self._work = root / "work"
         self._thumbs = root / "thumbs"
+        self._faces = root / "faces"
         self._thumb_size = thumbnail_size
 
     @staticmethod
@@ -23,6 +24,29 @@ class DiskImageCache:
 
     def thumbnail_path(self, media_id: int) -> Path:
         return self._shard(self._thumbs, media_id)
+
+    def face_crop_path(self, face_id: int) -> Path:
+        return self._shard(self._faces, face_id)
+
+    def write_face_crop(self, face_id: int, rgb: np.ndarray, bbox: tuple[float, float, float, float],
+                        size: int = 160, pad: float = 0.3) -> None:
+        """A square close-up around the face, for the People screens."""
+        h, w = rgb.shape[:2]
+        x1, y1, x2, y2 = bbox
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        half = max(x2 - x1, y2 - y1) * (0.5 + pad)
+        l, t, r, b = int(cx - half), int(cy - half), int(cx + half), int(cy + half)
+        crop = rgb[max(0, t):min(h, b), max(0, l):min(w, r)]
+        if crop.size == 0:
+            return
+        # Keep the face centred when the square runs off the image edge.
+        crop = cv2.copyMakeBorder(crop, max(0, -t), max(0, b - h), max(0, -l), max(0, r - w),
+                                  cv2.BORDER_CONSTANT, value=(24, 24, 24))
+        crop = cv2.resize(crop, (size, size), interpolation=cv2.INTER_AREA)
+        _write_jpeg(self.face_crop_path(face_id), crop, quality=88)
+
+    def delete_face_crop(self, face_id: int) -> None:
+        self.face_crop_path(face_id).unlink(missing_ok=True)
 
     def write_working(self, item_id: int, rgb: np.ndarray) -> None:
         _write_jpeg(self.working_path(item_id), rgb, quality=92)
