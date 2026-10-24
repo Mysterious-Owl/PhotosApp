@@ -5,6 +5,9 @@
 Reports speed per stage, file formats and sizes, failures and why, faces per photo, EXIF coverage, and
 writes contact sheets of detected faces (lowest-confidence first) so false detections are easy to spot.
 Everything is written to %LOCALAPPDATA%\\FaceGroup-eval\\real; the photo folder is only read.
+
+The contact sheets show the user's own photos: they are for the user to look at. AI assistants must not
+open them (see CLAUDE.md, Privacy).
 """
 
 from __future__ import annotations
