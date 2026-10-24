@@ -16,6 +16,7 @@ from facegroup.domain.entities import Job, Stage
 from facegroup.domain.policies import QualityGate
 from facegroup.ports.face import FaceAnalyzer
 from facegroup.ports.media import ImageCache, MediaDecoder, PermanentMediaError
+from facegroup.ports.search import Embedder
 from facegroup.ports.store import ImageMeta, Store
 
 log = logging.getLogger(__name__)
@@ -51,7 +52,8 @@ class IndexingService:
                  gate: QualityGate, settings: IndexingSettings = IndexingSettings(),
                  progress: Progress | None = None, should_stop: Callable[[], bool] = lambda: False,
                  suppressed: Callable[[str], np.ndarray] = lambda model_id: np.zeros((0, 512), np.float32),
-                 suppress_similarity: float = 0.5) -> None:
+                 suppress_similarity: float = 0.5,
+                 embedder_factory: Callable[[], Embedder] | None = None, embed_model_id: str | None = None) -> None:
         self._store = store
         self._decoder = decoder
         self._cache = cache
@@ -64,13 +66,25 @@ class IndexingService:
         self._suppressed_source = suppressed
         self._suppress_similarity = suppress_similarity
         self._suppressed = np.zeros((0, 512), np.float32)
+        self._make_embedder = embedder_factory
+        self._embed_model_id = embed_model_id if embedder_factory else None
+
+    def _next_stages(self) -> list[tuple[Stage, str]]:
+        stages = [(Stage.FACES, self._face_model_id)]
+        if self._embed_model_id:
+            stages.append((Stage.EMBED, self._embed_model_id))
+        return stages
 
     def recover(self) -> int:
-        """Call once at start-up, while holding the instance lock."""
-        return self._store.release_stale_leases(self._s.max_attempts)
+        """Call once at start-up, while holding the instance lock. Also queues work for any stage a model
+        has not processed yet (photos indexed before search existed, or after a model change)."""
+        released = self._store.release_stale_leases(self._s.max_attempts)
+        for stage, model_id in self._next_stages():
+            self._store.enqueue_missing(stage, model_id)
+        return released
 
     def run_all(self) -> list[StageReport]:
-        return [self.run_derive(), self.run_faces()]
+        return [self.run_derive(), self.run_faces(), self.run_embed()]
 
     # -- derive: decode once, working image + thumbnail, items ---------------------------------------
 
@@ -95,7 +109,7 @@ class IndexingService:
         for item_id in item_ids:
             self._cache.write_working(item_id, decoded.rgb)
         self._cache.write_thumbnail(job.media_id, decoded.rgb)
-        self._store.finish_derive(job, item_ids, self._face_model_id)
+        self._store.finish_derive(job, item_ids, self._next_stages())
 
     # -- faces: one model loaded, decode pool feeds one inference loop -------------------------------
 
@@ -121,6 +135,51 @@ class IndexingService:
             if analyzer is not None:
                 analyzer.close()
         return report
+
+    # -- embed: image embeddings for search, same pattern as faces --------------------------------------
+
+    def run_embed(self) -> StageReport:
+        report = StageReport(Stage.EMBED)
+        if self._make_embedder is None:
+            return report
+        embedder: Embedder | None = None
+        try:
+            with ThreadPoolExecutor(self._s.decode_workers, thread_name_prefix="load") as pool:
+                while not self._should_stop():
+                    jobs = self._store.lease_jobs(Stage.EMBED, self._s.batch_size,
+                                                  self._s.lease_seconds, self._s.max_attempts)
+                    if not jobs:
+                        break
+                    if embedder is None:
+                        embedder = self._make_embedder()
+                    loads = [pool.submit(self._working_image, j) for j in jobs]
+                    ready, images = [], []
+                    for job, load in zip(jobs, loads):  # a broken image fails alone, not the whole batch
+                        if self._guarded(job, lambda j, f=load: images.append(f.result()), report):
+                            ready.append(job)
+                        else:
+                            self._count(report, False)
+                    if ready:
+                        self._embed_batch(embedder, ready, images, report)
+                    self._cleanup([j.item_id for j in jobs if j.item_id is not None])
+        finally:
+            if embedder is not None:
+                embedder.close()
+        return report
+
+    def _embed_batch(self, embedder: Embedder, jobs: list[Job], images: list[np.ndarray],
+                     report: StageReport) -> None:
+        try:
+            vectors = embedder.embed_images(images)
+        except Exception as exc:
+            log.exception("embedding batch failed")
+            for job in jobs:
+                self._fail(job, f"{type(exc).__name__}: {exc}", permanent=False, report=report)
+                self._count(report, False)
+            return
+        for job, vec in zip(jobs, vectors):
+            ok = self._guarded(job, lambda j, v=vec: self._store.finish_embed(j, v), report)
+            self._count(report, ok)
 
     def _working_image(self, job: Job) -> np.ndarray:
         try:

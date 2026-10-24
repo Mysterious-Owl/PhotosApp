@@ -147,3 +147,44 @@ class TestFlows:
             assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
         assert client.get("/faces/999999.jpg").status_code == 404
         assert client.get("/media/..%2F..%2Fsecret/photo.jpg").status_code in (404, 422)
+
+
+class TestSearchPages:
+    @pytest.fixture
+    def indexed(self, make_app, library_dir):
+        make_photo(library_dir / "Goa 2023" / "sea.jpg", color=(0, 0, 250))
+        make_photo(library_dir / "Goa 2023" / "fire.jpg", color=(250, 0, 0))
+        app = make_app()
+        app.library.scan(app.library.add_root(library_dir))
+        for run in (app.indexing.run_derive, app.indexing.run_faces, app.indexing.run_embed):
+            run()
+        client = TestClient(create_app(app, Scheduler(), TOKEN, PORT), base_url=BASE, follow_redirects=False)
+        login(client)
+        return app, client
+
+    def test_search_page_shows_ranked_results(self, indexed):
+        app, client = indexed
+        html = client.get("/search?q=red").text
+        fire = count(app, "SELECT id FROM media WHERE rel_path LIKE '%fire.jpg'")
+        sea = count(app, "SELECT id FROM media WHERE rel_path LIKE '%sea.jpg'")
+        assert html.index(f"/photos/{fire}") < html.index(f"/photos/{sea}")
+
+    def test_folder_filter_and_empty_state(self, indexed):
+        app, client = indexed
+        root = app.library.roots()[0].id
+        html = client.get(f"/search?q=red&folder={root}:Nowhere").text
+        assert "No photos match" in html
+        assert "Goa 2023" in client.get("/search").text  # folder offered as a filter
+
+    def test_photo_page_and_similar(self, indexed):
+        app, client = indexed
+        fire = count(app, "SELECT id FROM media WHERE rel_path LIKE '%fire.jpg'")
+        page = client.get(f"/photos/{fire}")
+        assert page.status_code == 200 and "Find similar photos" in page.text and "fire.jpg" in page.text
+        sim = client.get(f"/search?similar={fire}").text
+        assert "Photos like" in sim and f"/photos/{fire}\"" not in sim.split("Photos like")[1].split("</h1>")[1]
+
+    def test_search_input_is_escaped(self, indexed):
+        _, client = indexed
+        html = client.get('/search?q=<script>alert(1)</script>').text
+        assert "<script>alert(1)</script>" not in html

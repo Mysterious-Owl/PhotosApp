@@ -11,6 +11,11 @@
 <body hx-boost="true">
   <header class="bar">
     <a class="brand" href="/people">FaceGroup</a>
+    <nav class="row"><a href="/people">People</a><a href="/search">Search</a></nav>
+    <form method="get" action="/search" class="searchbox" role="search">
+      <input type="search" name="q" placeholder="Search: beach, birthday cake, red car…" aria-label="Search photos"
+             value="{{ q if q is defined else '' }}">
+    </form>
     <div id="status" class="status status-{{ status.state }}" data-version="{{ status.version }}">
       <span class="dot"></span><span class="msg">{{ status.message }}</span>
     </div>

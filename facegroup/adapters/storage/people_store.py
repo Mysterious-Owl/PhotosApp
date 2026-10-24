@@ -186,6 +186,20 @@ class SqlitePeopleStore(SqliteBase):
                 ):
                     before[r[0]] = [r[1], r[2], r[3]]
 
+            if ch.keep_assigned_by and target is not None and face_ids:
+                # Merge: a face the user said is "not <target>" must not arrive in target with the rest.
+                # The specific decision beats the bulk one; such faces become unassigned instead.
+                vetoed = set()
+                for chunk in _chunks(face_ids):
+                    vetoed |= {r[0] for r in c.execute(
+                        f"SELECT face_id FROM face_reject WHERE person_id=? AND face_id IN ({_placeholders(len(chunk))})",
+                        (target, *chunk))}
+                if vetoed:
+                    v = sorted(vetoed)
+                    c.execute(f"UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL "
+                              f"WHERE id IN ({_placeholders(len(v))})", v)
+                    face_ids = [f for f in face_ids if f not in vetoed]
+
             for chunk in _chunks(face_ids):
                 ph = _placeholders(len(chunk))
                 if ch.unassign:
@@ -213,8 +227,11 @@ class SqlitePeopleStore(SqliteBase):
                 merged_rejects = [tuple(r) for r in c.execute(
                     f"SELECT face_id, person_id FROM face_reject WHERE person_id IN ({ph})", ch.delete_persons)]
                 deleted_rejects += merged_rejects  # cascade-deleted with the person; restored by undo
-                if target is not None:  # "not Mom" stays true after Mom absorbs a duplicate
-                    rejects += [(f, target) for f, _ in merged_rejects]
+                if target is not None:  # "not Mom" stays true after Mom absorbs a duplicate...
+                    in_target = {r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (target,))}
+                    # ...except for a face already in Mom: that later, explicit decision wins (found by the
+                    # property test: copying the rejection would leave a face inside a person it is "not").
+                    rejects += [(f, target) for f, _ in merged_rejects if f not in in_target]
             added_rejects = []
             for f, p in rejects:
                 if c.execute("INSERT OR IGNORE INTO face_reject(face_id, person_id) VALUES(?, ?)", (f, p)).rowcount:

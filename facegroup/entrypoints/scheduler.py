@@ -14,6 +14,8 @@ from facegroup.domain.entities import Stage
 
 log = logging.getLogger(__name__)
 
+_STAGE_LABEL = {Stage.DERIVE: "Preparing photos", Stage.FACES: "Finding faces", Stage.EMBED: "Learning what is in photos"}
+
 
 class Scheduler:
     def __init__(self) -> None:
@@ -47,7 +49,7 @@ class Scheduler:
 
     def progress(self, stage: Stage, done: int, failed: int) -> None:
         self._set(state="indexing", stage=stage.value, done=done, failed=failed,
-                  message=f"{'Preparing photos' if stage == Stage.DERIVE else 'Finding faces'}: {done} done"
+                  message=f"{_STAGE_LABEL.get(stage, stage.value)}: {done} done"
                           + (f", {failed} failed" if failed else ""))
 
     # -- used by the web UI ---------------------------------------------------------------------------
@@ -94,6 +96,7 @@ class Scheduler:
             a.library.scan(root)
         a.indexing.run_derive()
         a.indexing.run_faces()
+        a.indexing.run_embed()
         if self._stop.is_set():
             return
         self._set(state="grouping", stage="people", message="Grouping faces")

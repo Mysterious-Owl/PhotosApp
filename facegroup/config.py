@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     suggest_merge_similarity: float = 0.55
     suggest_min_group: int = 3
 
+    # Search (M3). "none" turns image search off.
+    search_model: str = "siglip2-base"
+
     # Web UI
     port: int = 8765
 

@@ -6,7 +6,7 @@ Local-first face grouping and search for your own photo library. Everything runs
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Design review: [docs/PLAN_REVIEW.md](docs/PLAN_REVIEW.md)
 
-**Status:** M1 (indexing) done; M2 (People screen in the browser) usable. Search comes in M3.
+**Status:** M1 (indexing), M2 (People) and M3 (search) done. Text in images (OCR) comes in M4.
 
 ## Quick start
 
@@ -33,6 +33,7 @@ python -m uv run facegroup download-models   # ~275 MB, once
 - Once a person has a name, FaceGroup finds them in other photos by itself. Those faces get a dashed outline on the person's page until you confirm them (**Yes, it's them**) or remove them (**Not them**). A face you remove from a person is never put back automatically.
 - **Merge** joins two people. **New person** splits selected faces off. **Undo** reverses the last change.
 - **Forget this person** deletes their faces from FaceGroup for good, and later scans skip them. Photos are never touched.
+- **Search** (box at the top): describe the photo ("beach at sunset", "birthday cake"), and narrow by person, date or folder. Words in file and folder names match too. On a photo, **Find similar photos**.
 - The link the app opens only works on this computer, for this session.
 
 **Command line:**

@@ -560,3 +560,12 @@ Where the M1 code deliberately differs from, or adds to, the design above:
 - **"Forget" clears undo history,** so a forgotten face cannot be brought back with Undo.
 - **Scheduler:** one thread that runs scan → derive → faces → people refresh on request. The UI streams its status over SSE (the server polls it twice a second and sends only changes).
 - **UI:** server-rendered Jinja templates, htmx 2.0.4 (`hx-boost`) served locally, about 40 lines of plain JS for live status and select-all. Every image is served by id; HEIC/TIFF are converted to JPEG for the browser.
+
+## 11. M3 implementation notes
+
+- **Embedder port** with `embed_images` and `embed_queries`. Each side loads on first use, so the web process only holds the text side (about 0.6 GB at fp16), and the indexing pass only loads the image side while it runs.
+- **New item-level stage `embed`** after `faces`. `recover()` queues it for any item that has no job for the current `model_id`, which also covers photos indexed before search existed and future model changes.
+- **No sqlite-vec.** Vectors stay canonical in `item_embedding`. For <50k photos an exact dot product over an in-memory matrix (reloaded only when the table changes) takes milliseconds, which is simpler than an approximate index. The `SearchStore` port keeps sqlite-vec or LanceDB possible later.
+- **Keyword index:** an FTS5 table over each file's relative path, kept in sync by triggers on `media`. User text is always quoted, so it is never FTS syntax. OCR text joins this index in M4.
+- **Search** = SQL filters (person, date, folder) -> vector ranking over the remaining items, plus keyword ranking -> reciprocal rank fusion -> one result per photo. Empty text with filters lists photos newest first.
+- **Model choice and parity checks:** docs/EVALUATION.md §6.

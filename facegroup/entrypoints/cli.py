@@ -82,7 +82,7 @@ def scan(
             for e in r.errors:
                 typer.echo(f"  ! {e}")
         if index and not stop.is_set():
-            for report in (a.indexing.run_derive(), a.indexing.run_faces()):
+            for report in (a.indexing.run_derive(), a.indexing.run_faces(), a.indexing.run_embed()):
                 progress.reset()
                 typer.echo(f"  {report.stage.value}: {report.done} done, {report.failed} failed")
                 for e in report.errors[:5]:
@@ -172,6 +172,7 @@ def ui(
         a.indexing.recover()
         scheduler.attach(a)
         scheduler.start()
+        threading.Thread(target=a.search.warm_up, name="search-warm-up", daemon=True).start()
         if scan_on_start and a.library.roots():
             scheduler.request_scan()
         token = secrets.token_urlsafe(32)

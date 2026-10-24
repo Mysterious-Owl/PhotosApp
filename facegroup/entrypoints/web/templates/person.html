@@ -54,7 +54,7 @@
     <label class="face {{ 'auto' if f.assigned_by != 'user' }}" title="{{ 'Found automatically' if f.assigned_by != 'user' else 'Confirmed' }}">
       <input type="checkbox" name="face" value="{{ f.id }}" {{ 'data-auto=1' if f.assigned_by != 'user' }}>
       <img src="/faces/{{ f.id }}.jpg" alt="" width="112" height="112" loading="lazy">
-      <a class="open" href="/media/{{ f.media_id }}/photo.jpg" target="_blank" hx-boost="false" title="Open photo">↗</a>
+      <a class="open" href="/photos/{{ f.media_id }}" title="Open photo">↗</a>
     </label>
     {% endfor %}
   </div>

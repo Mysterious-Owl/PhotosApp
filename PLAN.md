@@ -238,7 +238,7 @@ How to reduce it:
 |---|---|---|
 | M1 Core ✅ | Layered skeleton, config, SQLite schema + migrations, writer thread, scanner with OneDrive placeholder check, derive stage, job queue, buffalo_l ONNX adapter, CLI (`facegroup scan <dir>`), unit tests with fake adapters | 10k photos index without crashing, resume after being killed, and peak RAM is measured |
 | M2 People (steps 1–2 ✅, evaluation open) | k-NN assignment, cluster suggestions, people screen with accept/merge/split/move/reject and undo, local API security | A 2k-photo library can be cleaned up in under 15 minutes, and property tests show no user decision is ever overwritten |
-| M3 Visual search | Image-text fingerprints, search bar, filters (person, date, folder) | "beach sunset" returns relevant images on the test set |
+| M3 Visual search ✅ (SigLIP 2) | Image-text fingerprints, search bar, filters (person, date, folder) | "beach sunset" returns relevant images on the test set |
 | M4 Text | OCR, optional captions, text fingerprints, combined search | Search for words that appear in images (receipts, signs) |
 | M5 Video and polish | Video frame sampling + face tracks, folder watching, installer, evaluation report | One-click Windows install on a clean machine |
 
@@ -272,7 +272,7 @@ The scale benchmark above measures robustness, not accuracy. Accuracy is in [doc
    - FastAPI + React: richest UI, adds a Node build.
    - Tauri wrapper around a web UI: a desktop app; adds a Rust toolchain.
 2. **Default face model.** InsightFace buffalo_l (proposed; allowed for personal use) or AuraFace (fully open). Compare in M2 and keep the better one.
-3. **Image search model.** EmbeddingGemma 2 (one model for everything) or SigLIP 2 (better established, image and text only). Decide after the evaluation in M3.
+3. **Image search model.** ✅ Decided 2026-10-24: SigLIP 2 now (verified ONNX, ~1 h per 50k photos on the GPU); EmbeddingGemma 2 later as an optional higher-accuracy mode (86% vs 78.5% R@1, but ~35x slower here). See docs/EVALUATION.md §6.
 4. **Project licence (only if published later).** Options: MIT, Apache-2.0 (adds a patent grant), or AGPL-3.0, which keeps hosted forks open (Immich uses AGPL).
 5. **Library size to aim for.** Thousands vs. hundreds of thousands of items. This decides between sqlite-vec and LanceDB, and between HDBSCAN and Chinese Whispers for suggestions.
 6. **Captions in v1?** They are 1–3 seconds per image on the processor. They could ship off by default.

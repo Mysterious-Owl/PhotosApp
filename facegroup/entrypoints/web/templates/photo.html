@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Photo{% endblock %}
+{% block main %}
+<p><a href="javascript:history.back()" hx-boost="false">← Back</a></p>
+<div class="photo-view">
+  <img class="full" src="/media/{{ info.id }}/photo.jpg" alt="">
+  <aside>
+    <p class="meta"><code>{{ info.rel_path }}</code></p>
+    <p class="meta">
+      {% if info.taken_at %}Taken {{ info.taken_at.replace('T', ' ') }}<br>{% endif %}
+      {% if info.width %}{{ info.width }} × {{ info.height }} px · {% endif %}{{ (info.size / 1048576)|round(1) }} MB
+      {% if info.gps_lat is not none %}<br>Location {{ '%.4f'|format(info.gps_lat) }}, {{ '%.4f'|format(info.gps_lon) }}{% endif %}
+    </p>
+    <p><a class="btn" href="/search?similar={{ info.id }}">Find similar photos</a></p>
+    {% if info.faces %}
+    <h2>In this photo</h2>
+    <div class="faces-in">
+      {% for f in info.faces if f.kind != 'ignored' %}
+      {% if f.person_id %}
+      <a href="/people/{{ f.person_id }}"><img src="/faces/{{ f.id }}.jpg" alt="" width="64" height="64">
+        {{ f.name or "Unnamed" }}{% if f.assigned_by != 'user' %}?{% endif %}</a>
+      {% else %}
+      <span class="faces-in-unknown"><img src="/faces/{{ f.id }}.jpg" alt="" width="64" height="64" style="border-radius:50%"><br><span class="meta">unsorted</span></span>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

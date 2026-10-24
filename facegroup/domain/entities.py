@@ -27,6 +27,7 @@ class JobState(StrEnum):
 class Stage(StrEnum):
     DERIVE = "derive"  # media-level: decode once, working image, thumbnail, items
     FACES = "faces"  # item-level: detect, quality gate, embed
+    EMBED = "embed"  # item-level: image embedding for search
 
 
 @dataclass(frozen=True)

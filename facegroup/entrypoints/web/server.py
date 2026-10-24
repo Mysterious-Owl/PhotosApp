@@ -17,6 +17,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from facegroup.ports.search import SearchFilters
+
 HERE = Path(__file__).parent
 COOKIE = "facegroup_session"
 
@@ -167,6 +169,42 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     def undo(request: Request, next: str = Form("/people")):
         app.people.undo()
         return back(request, next)
+
+    # -- search -----------------------------------------------------------------------------------------
+
+    @web.get("/search", response_class=HTMLResponse)
+    def search_page(request: Request, q: str = "", person: str = "", date_from: str = "", date_to: str = "",
+                    folder: str = "", similar: int | None = None, n: int = 60):
+        root_id, folder_path = None, None
+        if ":" in folder and folder.split(":", 1)[0].isdigit():
+            root_id, folder_path = int(folder.split(":", 1)[0]), folder.split(":", 1)[1]
+        filters = SearchFilters(
+            person_ids=tuple(_ids(person.split(","))) if person else (),
+            date_from=date_from or None, date_to=date_to or None, root_id=root_id, folder=folder_path)
+        searched = bool(q.strip() or person or date_from or date_to or folder or similar)
+        result = None
+        if similar is not None:
+            result = app.search.similar(similar, filters)
+        elif searched:
+            result = app.search.search(q, filters)
+        done, total = app.search_store.embedding_coverage(app.search.model_id) if app.search.model_id else (0, 0)
+        shown = max(12, min(n, 200))
+        more_url = None
+        if result and len(result.hits) > shown:
+            more = request.url.include_query_params(n=shown + 60)
+            more_url = f"{more.path}?{more.query}"
+        return page(request, "search.html", q=q, result=result, shown=shown, more_url=more_url,
+                    people=app.people.people(),
+                    folders=app.search_store.top_folders(), sel_person=person, date_from=date_from,
+                    date_to=date_to, folder=folder, similar=similar, coverage=(done, total),
+                    similar_label=app.media.media_label(similar).replace("\\", "/").split("/")[-1] if similar else "")
+
+    @web.get("/photos/{mid}", response_class=HTMLResponse)
+    def photo_page(request: Request, mid: int):
+        info = app.search_store.photo_info(mid)
+        if info is None:
+            return RedirectResponse("/search", status_code=303)
+        return page(request, "photo.html", info=info, people=app.people.people())
 
     # -- library ----------------------------------------------------------------------------------------
 

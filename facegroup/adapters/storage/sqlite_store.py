@@ -241,7 +241,7 @@ class SqliteStore(SqliteBase):
 
         return self._write(op)
 
-    def finish_derive(self, job: Job, item_ids: list[int], face_model_id: str) -> None:
+    def finish_derive(self, job: Job, item_ids: list[int], next_stages: list[tuple[Stage, str]]) -> None:
         def op(c: sqlite3.Connection) -> None:
             c.execute(
                 "UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,)
@@ -252,7 +252,7 @@ class SqliteStore(SqliteBase):
             )
             c.executemany(
                 "INSERT OR IGNORE INTO job(media_id, item_id, stage, model_id) VALUES(?,?,?,?)",
-                [(job.media_id, i, Stage.FACES.value, face_model_id) for i in item_ids],
+                [(job.media_id, i, stage.value, model_id) for i in item_ids for stage, model_id in next_stages],
             )
 
         self._write(op)
@@ -296,6 +296,27 @@ class SqliteStore(SqliteBase):
                     c.execute("DELETE FROM face WHERE id=?", (r["id"],))
             c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
             return ids
+
+        return self._write(op)
+
+    def finish_embed(self, job: Job, vector: np.ndarray) -> None:
+        def op(c: sqlite3.Connection) -> None:
+            c.execute("INSERT OR REPLACE INTO item_embedding(item_id, model_id, vector) VALUES(?, ?, ?)",
+                      (job.item_id, job.model_id, np.asarray(vector, np.float32).tobytes()))
+            c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
+
+        self._write(op)
+
+    def enqueue_missing(self, stage: Stage, model_id: str) -> int:
+        """Queue `stage` for every item of an active photo that has no job for this model yet."""
+        def op(c: sqlite3.Connection) -> int:
+            return c.execute(
+                "INSERT OR IGNORE INTO job(media_id, item_id, stage, model_id) "
+                "SELECT i.media_id, i.id, ?, ? FROM item i JOIN media m ON m.id=i.media_id "
+                "WHERE m.file_state='active' AND NOT EXISTS ("
+                "  SELECT 1 FROM job j WHERE j.item_id=i.id AND j.stage=? AND j.model_id=?)",
+                (stage.value, model_id, stage.value, model_id),
+            ).rowcount
 
         return self._write(op)
 

@@ -13,7 +13,10 @@ from tests.conftest import FakeAnalyzer, count, make_photo, write_sql
 
 
 def index(app):
-    return app.indexing.run_derive(), app.indexing.run_faces()
+    """Run every pass; return the derive and faces reports (embed is checked in test_search)."""
+    derive, faces = app.indexing.run_derive(), app.indexing.run_faces()
+    app.indexing.run_embed()
+    return derive, faces
 
 
 def scan_and_index(app, folder):

@@ -1,6 +1,6 @@
 # FaceGroup — Evaluation
 
-As of 2026-10-24 · Covers milestone M1 (detection + face fingerprints). Grouping accuracy is evaluated in M2.
+As of 2026-10-24 · Covers M1 (faces), M2 (grouping, §3b) and M3 (search, §6).
 
 **Summary:** our re-implementation of InsightFace's pipeline reproduces the model's published accuracy on the standard LFW benchmark (99.83%, identical to InsightFace's published 99.83%), so the detection, alignment and fingerprint code is correct. On 254 real photos it indexed every file without a failure, and the faces it found were real faces. It also finds drawn, cartoon and animal faces, which stage 2 has to handle. Accuracy on different groups of people has **not** been measured on our own data yet; InsightFace's published numbers show a large gap for East Asian faces.
 
@@ -92,10 +92,57 @@ The gap for East Asian faces is about 20 points. In this app that would appear a
 - Children and age progression (same person across 10+ years).
 - Grouping quality: comes with M2.
 
+## 6. Search model (M3)
+
+**Decision: SigLIP 2 base, run with ONNX at fp16 on the GPU (fp32 on CPU). EmbeddingGemma 2 is more accurate and is planned as an optional mode.**
+
+### 6a. Model comparison: official reference implementations, same data, same machine
+
+Flickr30k 1K test set: 1,000 photos, 5 human captions each. "Photo from caption" = for each caption, is the right photo ranked first (R@1) or in the top 5? `tests/eval/eval_retrieval.py`, run in a separate PyTorch environment.
+
+| Model | Photo from caption R@1 | R@5 | R@10 | Caption from photo R@1 | Dim | Reference CPU time / photo* |
+|---|---|---|---|---|---|---|
+| OpenCLIP ViT-B/32 (LAION-2B) | 66.5% | 88.2% | 93.0% | 84.2% | 512 | 0.05 s |
+| SigLIP 2 base/16 224 | 78.5% | 93.9% | 96.7% | 91.8% | 768 | 0.18 s |
+| **EmbeddingGemma 2** | **86.4%** | **97.5%** | **98.7%** | **96.2%** | 768 | 3–10 s |
+
+\*PyTorch on CPU, partly measured while other jobs ran, so indicative only. OpenCLIP's 66.5% matches its published Flickr30k figure (~66%), which confirms the harness is set up correctly.
+
+### 6b. What the app can actually run
+
+| Runtime on this laptop | Time / photo | 50k photos |
+|---|---|---|
+| SigLIP 2, ONNX fp16, DirectML (integrated GPU) | **0.07 s** | ~1 h |
+| SigLIP 2, ONNX fp32, CPU | 0.23 s | ~3 h |
+| EmbeddingGemma 2 image encoder, ONNX fp32, CPU (full detail, 2,520 patches) | 2.9 s + text pass | ~40 h+ |
+| EmbeddingGemma 2 image encoder, ONNX, DirectML | fails (unsupported Reshape in onnxruntime-directml 1.24) | — |
+
+EmbeddingGemma 2 is about 8 points better at R@1 but about 35-40x slower here, and its ONNX pipeline (image patching plus splicing image tokens into the text model) would need its own parity check. Decision (2026-10-24): ship SigLIP 2 now and add EmbeddingGemma 2 later as an optional, slower, higher-accuracy mode.
+
+### 6c. Our ONNX port vs the reference (catches silent bugs)
+
+`tests/eval/eval_retrieval_onnx.py` runs the app's adapter on the same data and compares each vector with the reference's.
+
+| SigLIP 2 ONNX files | Device | Photo from caption R@1 | Agreement with reference (cosine, min) |
+|---|---|---|---|
+| Reference (PyTorch) | CPU | 78.5% | — |
+| **fp32** | CPU / DirectML | **78.5%** | **0.9995** |
+| **fp16** (shipped on GPU) | DirectML | **78.3%** | **0.9988** |
+| int8 "quantized" (published) | CPU | 35.9% | 0.56 |
+| int8 "quantized" (published) | DirectML | 28.1% | 0.40 (text side) |
+
+**The published int8 files are badly degraded** and are not used. The preprocessing was ruled out as the cause: pixel values match the reference processor to 1/127 and token ids match exactly. fp16 and fp32 vectors are interchangeable (cosine 0.999), so the model id does not include precision and switching device never forces a re-index.
+
+### 6d. Real library
+
+All 254 files of `OneDrive\Pictures` were embedded in about 17 s, including model load, with peak memory 1.03 GB. Eight queries were checked by eye against the actual content, and the top result was right for all eight: video-call screenshots, anime scenes, space wallpapers, checkout pages, the two monkey pictures, the cherry-blossom wallpaper, a specific comic, and a physics textbook page. A query takes about 50 ms after the text model has loaded; that load takes about 5 s and now happens in the background at start-up.
+
 ## Reproduce
 
 ```powershell
 python -m uv run python tests/eval/eval_lfw.py                         # ~13 min, downloads LFW once
+%LOCALAPPDATA%\FaceGroup-eval\refenv\Scripts\python tests/eval/eval_retrieval.py   # reference models (PyTorch env)
+python -m uv run python tests/eval/eval_retrieval_onnx.py --variant fp16   # app's ONNX port vs reference
 python -m uv run python scripts/profile_library.py "C:\path\to\photos"  # read-only
 python -m uv run python scripts/bench.py --count 10000 --kill-after 240
 ```

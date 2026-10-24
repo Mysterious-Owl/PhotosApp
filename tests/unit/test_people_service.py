@@ -195,6 +195,28 @@ def test_explicit_move_overrides_an_earlier_rejection_and_undo_restores_it(lib):
     assert lib.state() == before
 
 
+def test_merge_does_not_override_a_specific_rejection(lib):
+    """Found by the property test: B contains a face the user said is not A; merging B into A must not
+    put it in A. The face is left unassigned instead, and undo restores everything."""
+    people = lib.app.people
+    people.refresh()
+    sugg = people.suggestions()
+    a = people.accept(sugg[0].id, "A")
+    b = people.accept(sugg[1].id, "B")
+    face = [f.id for f in people.person_faces(b)][0]
+    people.move([face], a)
+    people.reject([face], a)  # "not A"
+    people.move([face], b)  # it is B's
+    assert count(lib.app, "SELECT COUNT(*) FROM face_reject WHERE face_id=? AND person_id=?", face, a) == 1
+    before = lib.state()
+    people.merge(b, a)
+    assert assigned(lib.app, face) is None
+    people.refresh()
+    assert assigned(lib.app, face) != a
+    people.undo()
+    assert lib.state() == before
+
+
 def test_not_a_person_goes_to_one_hidden_group(lib):
     people = lib.app.people
     people.refresh()
@@ -235,7 +257,7 @@ ACTIONS = st.lists(
 )
 
 
-@hsettings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@hsettings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(actions=ACTIONS)
 def test_automatic_steps_never_change_a_user_decision(make_app, tmp_path, actions):
     """Property: after any sequence of user actions, assign() and suggest() leave every user-decided face as is."""

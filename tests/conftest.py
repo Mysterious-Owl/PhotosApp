@@ -44,6 +44,34 @@ class FakeAnalyzer:
         self.closed = True
 
 
+class FakeEmbedder:
+    """Deterministic stand-in for an image-text model. An image's vector encodes its mean colour; a text query
+    names a colour ("red", "green", "blue"), so search results can be checked exactly."""
+
+    model_id = "fake-embedder-v1"
+    dim = 8
+    loads = 0
+    COLOURS = {"red": (255, 0, 0), "green": (0, 255, 0), "blue": (0, 0, 255), "grey": (128, 128, 128)}
+
+    def __init__(self) -> None:
+        FakeEmbedder.loads += 1
+
+    @staticmethod
+    def _vec(rgb) -> np.ndarray:
+        r, g, b = (float(x) / 255 for x in rgb)
+        v = np.array([r, g, b, 1 - r, 1 - g, 1 - b, 0.1, 0.1], np.float32)
+        return v / np.linalg.norm(v)
+
+    def embed_images(self, images):
+        return np.stack([self._vec(im.reshape(-1, 3).mean(axis=0)) for im in images])
+
+    def embed_queries(self, texts):
+        return np.stack([self._vec(self.COLOURS.get(t.strip().lower(), (128, 128, 128))) for t in texts])
+
+    def close(self) -> None:
+        pass
+
+
 def make_photo(path: Path, size=(400, 300), color=(200, 120, 80), exif_orientation: int | None = None,
                fmt: str | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,7 +113,8 @@ def make_app(settings):
 
     def factory(analyzer=None, **overrides) -> App:
         s = settings.model_copy(update=overrides) if overrides else settings
-        a = build(s, analyzer_factory=analyzer or FakeAnalyzer, face_model_id=FakeAnalyzer.model_id)
+        a = build(s, analyzer_factory=analyzer or FakeAnalyzer, face_model_id=FakeAnalyzer.model_id,
+                  embedder=FakeEmbedder, embed_model_id=FakeEmbedder.model_id)
         apps.append(a)
         return a
 

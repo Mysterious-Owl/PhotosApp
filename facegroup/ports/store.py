@@ -66,9 +66,13 @@ class Store(Protocol):
         """Replace the media's items (a photo has one) and return their ids. Does not finish the job."""
         ...
 
-    def finish_derive(self, job: Job, item_ids: list[int], face_model_id: str) -> None:
-        """Mark the derive job done and enqueue the next stages for its items."""
+    def finish_derive(self, job: Job, item_ids: list[int], next_stages: list[tuple[Stage, str]]) -> None:
+        """Mark the derive job done and enqueue (stage, model_id) jobs for its items."""
         ...
+
+    def finish_embed(self, job: Job, vector) -> None: ...
+
+    def enqueue_missing(self, stage: Stage, model_id: str) -> int: ...
 
     def finish_faces(self, job: Job, faces: list[DetectedFace], qualities: list[float],
                      detector_id: str) -> list[int]:
