@@ -7,6 +7,7 @@ InsightFace repository into the pytest cache. Nothing is committed.
 import urllib.request
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
@@ -47,6 +48,20 @@ def test_detects_every_face_in_a_group_photo(model, group_photo):
         lm = f.landmarks
         assert (lm[:, 0] >= x1 - 5).all() and (lm[:, 0] <= x2 + 5).all()  # landmarks sit inside the box
         assert lm[0, 0] < lm[1, 0]  # left eye left of right eye
+
+
+def test_face_filling_the_whole_frame_is_found(model, group_photo):
+    """Close-up selfie case: the face touches every edge. Needs the padded retry."""
+    img = PillowDecoder().decode(group_photo).rgb
+    face = max(model.analyze(img), key=lambda f: f.short_side)
+    x1, y1, x2, y2 = (int(v) for v in face.bbox)
+    closeup = np.ascontiguousarray(img[y1 + 5 : y2 - 5, x1 + 5 : x2 - 5])
+    closeup = cv2.resize(closeup, (closeup.shape[1] * 4, closeup.shape[0] * 4))
+    found = model.analyze(closeup)
+    assert len(found) == 1
+    assert float(found[0].embedding @ face.embedding) > 0.6  # still recognisably the same person
+    fx1, fy1, fx2, fy2 = found[0].bbox
+    assert fx1 >= 0 and fy1 >= 0 and fx2 <= closeup.shape[1] and fy2 <= closeup.shape[0]
 
 
 def test_same_person_matches_across_scales_and_differs_from_others(model, group_photo):

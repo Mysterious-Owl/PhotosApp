@@ -254,6 +254,10 @@ Benchmark: `scripts/bench.py --count 10000 --kill-after 240` on the reference la
 | Speed | Derive about 27 photos/s. Faces about **5.1 photos/s (about 27 faces/s)** on the integrated GPU. Total 37 min for 10k photos at 5.3 faces each; real libraries average fewer faces per photo, so they will be faster |
 | Disk | Database 251 MB, thumbnails 250 MB; working images cleaned up as designed |
 
+### Accuracy check (2026-10-24)
+
+The scale benchmark above measures robustness, not accuracy. Accuracy is in [docs/EVALUATION.md](docs/EVALUATION.md): LFW 99.83% (matches the published model, so our detection and alignment port is correct), 0 failures on 254 real photos, and the published per-group gap for buffalo_l (East Asian 75.0 vs Caucasian 94.7 on InsightFace's MR benchmark), to be measured on our own data in M2.
+
 ### Decided (2026-10-17)
 
 - **Interface:** FastAPI + server-rendered pages with HTMX, opened in the browser. No Node.js toolchain.
