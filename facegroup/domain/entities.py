@@ -21,7 +21,6 @@ class JobState(StrEnum):
     RETRY_WAIT = "retry_wait"
     DONE = "done"
     DEAD = "dead"
-    CANCELLED = "cancelled"
 
 
 class Stage(StrEnum):

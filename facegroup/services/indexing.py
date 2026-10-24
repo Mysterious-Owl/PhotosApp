@@ -42,10 +42,6 @@ class StageReport:
     errors: list[str] = field(default_factory=list)
 
 
-class StopRequested(Exception):
-    pass
-
-
 class IndexingService:
     def __init__(self, store: Store, decoder: MediaDecoder, cache: ImageCache,
                  face_analyzer_factory: Callable[[], FaceAnalyzer], face_model_id: str,
@@ -84,6 +80,7 @@ class IndexingService:
         return released
 
     def run_all(self) -> list[StageReport]:
+        """Every pass in order. The one place that knows the stage order (CLI and scheduler both use it)."""
         return [self.run_derive(), self.run_faces(), self.run_embed()]
 
     # -- derive: decode once, working image + thumbnail, items ---------------------------------------

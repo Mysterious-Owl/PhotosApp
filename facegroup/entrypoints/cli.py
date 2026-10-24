@@ -82,7 +82,7 @@ def scan(
             for e in r.errors:
                 typer.echo(f"  ! {e}")
         if index and not stop.is_set():
-            for report in (a.indexing.run_derive(), a.indexing.run_faces(), a.indexing.run_embed()):
+            for report in a.indexing.run_all():
                 progress.reset()
                 typer.echo(f"  {report.stage.value}: {report.done} done, {report.failed} failed")
                 for e in report.errors[:5]:

@@ -94,9 +94,7 @@ class Scheduler:
         for root in a.library.roots():
             self._set(state="scanning", stage="scan", done=0, failed=0, message=f"Scanning {root.path}")
             a.library.scan(root)
-        a.indexing.run_derive()
-        a.indexing.run_faces()
-        a.indexing.run_embed()
+        a.indexing.run_all()
         if self._stop.is_set():
             return
         self._set(state="grouping", stage="people", message="Grouping faces")
