@@ -580,3 +580,10 @@ Where the M1 code deliberately differs from, or adds to, the design above:
   - Is this group someone you know? A "no" records rejections, so the question is not asked again.
   - Are these two people the same? A "no" is stored in `person_distinct` and never asked again. People seen together in one photo are never asked about.
   - The automatic matches closest to their person's threshold.
+
+## 13. Organising, text and browsing (batches A, B, D, 2026-10-25)
+
+- **Organise pass** (after embed, before OCR): categories by zero-shot SigLIP 2 on stored vectors plus a screenshot rule; duplicates by file hash and 64-bit dHash (computed at derive, backfilled from thumbnails); bursts by folder, time and embedding. Results go in `media_category`, `duplicate_member` and `stack_member`. User choices (category, burst top pick) survive recomputation. Flags (`favorite`, `rating`, `hidden`) are columns on `media`. Nothing is ever written to photo files.
+- **OCR stage** runs after organising, because it needs the categories. Only screenshot, document, receipt and meme items are read by default. Text goes to `item_text`, mirrored into FTS5 `ocr_fts` by triggers.
+- **Search** fuses three rankings: meaning (vectors), file names and text in images. Names in the query become person filters, with an escape hatch to search the words literally. Results fold bursts.
+- **Browsing** reuses search's filter SQL (`_filter_sql`), so the timeline, memories, events and search always agree. Events are gap-based clusters (> 8 h gap, >= 6 photos) computed on request. Saved searches store only whitelisted query parameters.

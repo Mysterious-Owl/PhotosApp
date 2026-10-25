@@ -78,6 +78,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         ctx.update(status=scheduler.status, request=request)
         return templates.TemplateResponse(request, name, ctx)
 
+    page_ = page
+
     def back(request: Request, next_url: str | None = None, default: str = "/people"):
         return RedirectResponse(_safe_next(next_url, default), status_code=303)
 
@@ -87,13 +89,58 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     def login(t: str = ""):
         if not hmac.compare_digest(t, token):
             return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=401)
-        r = RedirectResponse("/people", status_code=303)
+        r = RedirectResponse("/photos", status_code=303)
         r.set_cookie(COOKIE, token, httponly=True, samesite="strict", path="/")
         return r
 
     @web.get("/")
     def home():
-        return RedirectResponse("/people", status_code=303)
+        return RedirectResponse("/photos", status_code=303)
+
+    # -- browse: timeline, memories, events, saved searches ----------------------------------------------
+
+    def browse_filters(everything: str) -> SearchFilters:
+        return SearchFilters(kind=None if everything else "photos")  # clutter hidden unless asked
+
+    @web.get("/photos", response_class=HTMLResponse)
+    def photos_page(request: Request, page: int = 0, everything: str = "", month: str = ""):
+        if not app.library.roots():
+            return RedirectResponse("/people", status_code=303)  # first run: the add-folder screen
+        if month:
+            page = app.browse.month_page(month)
+        f = browse_filters(everything)
+        return page_(request, "photos.html", tl=app.browse.timeline(f, max(page, 0)),
+                     memories=app.browse.memories(f) if page == 0 else [], everything=everything)
+
+    @web.get("/events", response_class=HTMLResponse)
+    def events_page(request: Request, everything: str = ""):
+        return page_(request, "events.html", events=app.browse.events(browse_filters(everything)), everything=everything)
+
+    @web.get("/event", response_class=HTMLResponse)
+    def event_page(request: Request, key: str, everything: str = ""):
+        event = app.browse.event(browse_filters(everything), key)
+        if event is None:
+            return RedirectResponse("/events", status_code=303)
+        return page_(request, "event.html", event=event)
+
+    @web.post("/search/save")
+    async def save_search(request: Request):
+        form = await request.form()
+        try:
+            app.browse.save(str(form.get("name", "")), {k: str(v) for k, v in form.items()})
+        except ValueError as exc:
+            return page_(request, "error.html", message=str(exc))
+        return back(request, "/search?" + app.browse.safe_query(str(form.get("current", ""))))
+
+    @web.post("/search/saved/{sid}/delete")
+    def delete_saved(request: Request, sid: int):
+        app.browse.delete(sid)
+        return back(request, "/search")
+
+    @web.get("/saved/{sid}")
+    def open_saved(sid: int):
+        found = next((s for s in app.browse.saved() if s["id"] == sid), None)
+        return RedirectResponse("/search?" + app.browse.safe_query(found["query"]) if found else "/search", status_code=303)
 
     # -- pages ------------------------------------------------------------------------------------------
 
@@ -263,6 +310,7 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
             more_url = f"{more.path}?{more.query}"
         literal = request.url.include_query_params(names="0")
         return page(request, "search.html", q=q, result=result, shown=shown, more_url=more_url,
+                    saved=app.browse.saved(), current_query=request.url.query,
                     literal_url=f"{literal.path}?{literal.query}",
                     people_by_id={p.id: p for p in app.people.people()},
                     people=app.people.people(),

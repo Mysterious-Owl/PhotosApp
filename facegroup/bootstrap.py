@@ -27,6 +27,7 @@ from facegroup.services.indexing import IndexingService, IndexingSettings, Progr
 from facegroup.services.library import LibraryService
 from facegroup.services.media import MediaService
 from facegroup.services.people import LearnPolicy, PeopleService, SuggestPolicy
+from facegroup.services.browse import BrowseService
 from facegroup.services.organize import OrganizeService
 from facegroup.services.search import SearchService
 from facegroup.ports.search import Embedder
@@ -47,6 +48,7 @@ class App:
     search_store: SqliteSearchStore
     organize: OrganizeService
     organize_store: SqliteOrganizeStore
+    browse: BrowseService
     _writer: DbWriter
     _lock: InstanceLock
 
@@ -187,4 +189,4 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
 
     organize = OrganizeService(organize_store, search.embed_texts, embed_model_id or "", thumbnail_hash)
     return App(settings, store, people_store, cache, decoder, library, indexing, people, media, search,
-               search_store, organize, organize_store, writer, lock)
+               search_store, organize, organize_store, BrowseService(search_store), writer, lock)

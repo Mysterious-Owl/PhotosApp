@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Events{% endblock %}
+{% block main %}
+<div class="row">
+  <h1>Events <span class="count">{{ events|length }}</span></h1>
+  <a class="link" href="/events?{{ '' if everything else 'everything=1' }}">
+    {{ 'Hide screenshots and other clutter' if everything else 'Include screenshots and other clutter' }}</a>
+</div>
+<p class="hint">Days and trips found automatically: photos taken close together (a gap of more than 8 hours starts a
+  new event; at least 6 photos).</p>
+{% if not events %}<p>No events yet.</p>{% endif %}
+<div class="events-grid">
+  {% for e in events %}
+  <a class="card event-card" href="/event?key={{ e.key|urlencode }}{{ '&everything=1' if everything }}">
+    <img src="/media/{{ e.cover }}/thumb.jpg" alt="" loading="lazy">
+    <div><strong>{{ e.title }}</strong><br><span class="meta">{{ e.count }} photos{% if e.folder %} · {{ e.folder }}{% endif %}</span></div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

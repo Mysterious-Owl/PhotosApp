@@ -29,6 +29,23 @@
   {% if result %}<a class="link" href="/search">Clear</a>{% endif %}
 </form>
 
+{% if saved %}
+<p class="row saved">Saved: {% for s in saved %}
+  <a class="chip" href="/saved/{{ s.id }}">{{ s.name }}</a>
+  <form method="post" action="/search/saved/{{ s.id }}/delete" class="inline"><button class="link x" title="Delete {{ s.name }}">×</button></form>
+{% endfor %}</p>
+{% endif %}
+{% if result is not none %}
+<details class="inline save-search"><summary>Save this search</summary>
+  <form method="post" action="/search/save" class="row">
+    {% for k in ('q', 'person', 'date_from', 'date_to', 'folder', 'kind', 'fav') %}
+    <input type="hidden" name="{{ k }}" value="{{ request.query_params.get(k, '') }}">{% endfor %}
+    <input type="hidden" name="current" value="{{ current_query }}">
+    <input name="name" placeholder="Name, e.g. Receipts 2024" required aria-label="Name for this search">
+    <button class="btn" type="submit">Save</button>
+  </form>
+</details>
+{% endif %}
 {% if coverage[1] and coverage[0] < coverage[1] %}
 <p class="notice">Still learning what is in your photos: {{ coverage[0] }} of {{ coverage[1] }} done. Searching by description covers those so far; file and folder names are searched for all.</p>
 {% endif %}

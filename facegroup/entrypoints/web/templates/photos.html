@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Photos{% endblock %}
+{% block main %}
+{% macro grid(tiles) -%}
+<div class="results">
+  {% for t in tiles %}
+  <a href="/photos/{{ t.media_id }}"><img src="/media/{{ t.media_id }}/thumb.jpg" alt="" loading="lazy">
+    {% if t.stack_size > 1 %}<span class="stackn" title="{{ t.stack_size }} similar shots">+{{ t.stack_size - 1 }}</span>{% endif %}</a>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+<div class="row">
+  <h1>Photos <span class="count">{{ tl.total }}</span></h1>
+  <a class="link" href="/photos?{{ '' if everything else 'everything=1' }}">
+    {{ 'Hide screenshots and other clutter' if everything else 'Show screenshots and other clutter too' }}</a>
+</div>
+
+{% if memories %}
+<section>
+  <h2>On this day</h2>
+  <div class="memories">
+    {% for years, tiles in memories %}
+    <div class="memory card"><strong>{{ years }} year{{ 's' if years != 1 }} ago</strong>{{ grid(tiles) }}</div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="timeline">
+  <div>
+    {% if not tl.months %}<p>No photos yet{% if not everything %} (screenshots and clutter are hidden){% endif %}.</p>{% endif %}
+    {% for key, label, tiles in tl.months %}
+    <section class="month" id="m{{ key }}">
+      <h2>{{ label }} <span class="count">{{ tiles|sum(attribute="stack_size") }}</span></h2>
+      {{ grid(tiles) }}
+    </section>
+    {% endfor %}
+    <p class="row">
+      {% if tl.page > 0 %}<a class="btn" href="/photos?page={{ tl.page - 1 }}{{ '&everything=1' if everything }}">Newer</a>{% endif %}
+      {% if tl.more %}<a class="btn" href="/photos?page={{ tl.page + 1 }}{{ '&everything=1' if everything }}">Older</a>{% endif %}
+    </p>
+  </div>
+  <nav class="jump" aria-label="Jump to month">
+    {% set ns = namespace(year='') %}
+    {% for key, label, n in tl.jump %}
+      {% if key[:4] != ns.year %}{% set ns.year = key[:4] %}<div class="year">{{ ns.year }}</div>{% endif %}
+      <a href="/photos?month={{ key }}{{ '&everything=1' if everything }}#m{{ key }}"><span>{{ label.split(' ')[0][:3] }}</span><span>{{ n }}</span></a>
+    {% endfor %}
+  </nav>
+</div>
+{% endblock %}

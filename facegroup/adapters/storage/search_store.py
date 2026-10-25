@@ -17,6 +17,8 @@ from facegroup.adapters.storage.sqlite_store import SqliteBase
 from facegroup.ports.search import SearchFilters
 
 _WORD = re.compile(r"\w+", re.UNICODE)
+# When a photo was taken: EXIF date if present, else the file's modification time.
+DATE_SQL = "COALESCE(m.taken_at, strftime('%Y-%m-%dT%H:%M:%S', m.mtime, 'unixepoch'))"
 
 
 class SqliteSearchStore(SqliteBase):
@@ -26,8 +28,23 @@ class SqliteSearchStore(SqliteBase):
         self._cache_lock = threading.Lock()
 
     def candidate_items(self, f: SearchFilters) -> tuple[np.ndarray, np.ndarray]:
-        sql = ["SELECT i.id, i.media_id FROM item i JOIN media m ON m.id=i.media_id "
-               "LEFT JOIN media_category mc ON mc.media_id=m.id WHERE m.file_state='active'"]
+        where, args = self._filter_sql(f)
+        rows = self._read().execute(
+            "SELECT i.id, i.media_id FROM item i JOIN media m ON m.id=i.media_id "
+            "LEFT JOIN media_category mc ON mc.media_id=m.id WHERE " + where, args).fetchall()
+        return np.array([r[0] for r in rows], np.int64), np.array([r[1] for r in rows], np.int64)
+
+    def dated_media(self, f: SearchFilters) -> list[tuple[int, str]]:
+        """(media_id, capture date or file date, ISO) for photos matching the filters, newest first. Used by the
+        timeline, memories and events; the same filters as search, so the two always agree."""
+        where, args = self._filter_sql(f)
+        return [(r[0], r[1]) for r in self._read().execute(
+            f"SELECT m.id, {DATE_SQL} AS d FROM media m LEFT JOIN media_category mc ON mc.media_id=m.id "
+            f"WHERE {where} AND m.width IS NOT NULL ORDER BY d DESC, m.id DESC", args)]
+
+    @staticmethod
+    def _filter_sql(f: SearchFilters) -> tuple[str, list]:
+        sql = ["m.file_state='active'"]
         args: list = []
         if f.kind == "hidden":
             sql.append("AND m.hidden=1")
@@ -49,12 +66,11 @@ class SqliteSearchStore(SqliteBase):
             sql.append("AND EXISTS (SELECT 1 FROM face f JOIN item i2 ON i2.id=f.item_id "
                        "WHERE i2.media_id=m.id AND f.person_id=?)")
             args.append(pid)
-        date = "COALESCE(m.taken_at, strftime('%Y-%m-%dT%H:%M:%S', m.mtime, 'unixepoch'))"
         if f.date_from:
-            sql.append(f"AND {date} >= ?")
+            sql.append(f"AND {DATE_SQL} >= ?")
             args.append(f.date_from)
         if f.date_to:
-            sql.append(f"AND {date} < date(?, '+1 day')")
+            sql.append(f"AND {DATE_SQL} < date(?, '+1 day')")
             args.append(f.date_to)
         if f.root_id is not None:
             sql.append("AND m.root_id=?")
@@ -63,8 +79,7 @@ class SqliteSearchStore(SqliteBase):
             prefix = f.folder.strip("/").replace("\\", "/") + "/"
             sql.append("AND substr(m.rel_path, 1, ?)=?")
             args += [len(prefix), prefix]
-        rows = self._read().execute(" ".join(sql), args).fetchall()
-        return np.array([r[0] for r in rows], np.int64), np.array([r[1] for r in rows], np.int64)
+        return " ".join(sql), args
 
     def _matrix(self, model_id: str) -> tuple[np.ndarray, np.ndarray]:
         stamp = tuple(self._read().execute(
@@ -168,6 +183,25 @@ class SqliteSearchStore(SqliteBase):
             "FROM stack_member s WHERE s.media_id IN (SELECT value FROM json_each(?))",
             (json.dumps([int(m) for m in media_ids]),)).fetchall()
         return {r[0]: (r[1], bool(r[2]), r[3]) for r in rows}
+
+    # -- saved searches --------------------------------------------------------------------------------
+
+    def saved_searches(self) -> list[dict]:
+        return [dict(r) for r in self._read().execute("SELECT id, name, query FROM saved_search ORDER BY name")]
+
+    def save_search(self, name: str, query: str) -> None:
+        self._write(lambda c: c.execute(
+            "INSERT INTO saved_search(name, query, created_at) VALUES(?, ?, datetime('now')) "
+            "ON CONFLICT(name) DO UPDATE SET query=excluded.query", (name.strip(), query)))
+
+    def delete_saved_search(self, search_id: int) -> None:
+        self._write(lambda c: c.execute("DELETE FROM saved_search WHERE id=?", (search_id,)))
+
+    def folder_of(self, media_ids: list[int]) -> dict[int, str]:
+        rows = self._read().execute(
+            "SELECT id, rel_path FROM media WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps([int(m) for m in media_ids]),)).fetchall()
+        return {r[0]: r[1] for r in rows}
 
     def embedding_coverage(self, model_id: str) -> tuple[int, int]:
         c = self._read()
