@@ -33,6 +33,7 @@ python -m uv run facegroup download-models   # ~275 MB, once
 - Once a person has a name, FaceGroup finds them in other photos by itself. Those faces get a dashed outline on the person's page until you confirm them (**Yes, it's them**) or remove them (**Not them**). A face you remove from a person is never put back automatically.
 - **Merge** joins two people. **New person** splits selected faces off. **Undo** reverses the last change.
 - **Forget this person** deletes their faces from FaceGroup for good, and later scans skip them. Photos are never touched.
+- **Check** (top bar): a few quick yes/no questions FaceGroup is least sure about ("Is this group Mom?", "Are Face 7 and Face 12 the same person?"). It measures how often its automatic matches are right, from your own answers and confirmed faces, and tunes its strictness to stay at 98% or better. It becomes more careful quickly, and looser only with plenty of evidence. Two faces in one photo are always treated as two different people.
 - **Search** (box at the top): describe the photo ("beach at sunset", "birthday cake"), and narrow by person, date or folder. Words in file and folder names match too. On a photo, **Find similar photos**.
 - The link the app opens only works on this computer, for this session.
 

@@ -202,6 +202,29 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         pid = app.people.combine(people_ids, suggestion_ids, str(form.get("name", "")))
         return back(request, f"/people/{pid}" if pid else "/people")
 
+    @web.get("/check", response_class=HTMLResponse)
+    def check_page(request: Request):
+        questions = app.people.questions()
+        people = {p.id: p for p in app.people.people()}
+        questions = [q for q in questions if q.person_id in people and (q.other_id is None or q.other_id in people)]
+        media_of = {q.face_id: (app.people_store.face_media(q.face_id) or (0, None))[0]
+                    for q in questions if q.face_id}
+        return page(request, "check.html", questions=questions, people=people, media_of=media_of,
+                    stats=app.people.learning_stats(), min_samples=30)
+
+    @web.post("/check/answer")
+    async def check_answer(request: Request):
+        form = await request.form()
+        kind, yes = form.get("kind"), form.get("answer") == "yes"
+        num = lambda k: int(form.get(k)) if str(form.get(k, "")).isdigit() else None
+        if kind == "is_person" and num("face") and num("person"):
+            app.people.answer_is_person(num("face"), num("person"), yes)
+        elif kind == "same_person" and num("person") and num("other"):
+            app.people.answer_same_person(num("person"), num("other"), yes)
+        elif kind == "group_is" and num("suggestion") and num("person"):
+            app.people.answer_group_is(num("suggestion"), num("person"), yes)
+        return back(request, "/check")
+
     @web.post("/undo")
     def undo(request: Request, next: str = Form("/people")):
         app.people.undo()

@@ -133,3 +133,13 @@ body:has(.pick input:checked) .combine-bar { display: flex; }
 
 .part { margin: 8px 0 18px; }
 .part-head { font-size: 1rem; margin: 12px 0 6px; display: flex; gap: 10px; align-items: baseline; }
+
+.learned { margin: 12px 0 20px; }
+.learned h2, .question h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.question { margin: 12px 0; }
+.qfaces { margin: 8px 0 12px; gap: 6px; }
+.qfaces img { border-radius: 8px; }
+.qfaces img.ref { outline: 3px solid var(--accent); }
+.qfaces .vs { color: var(--muted); font-weight: 600; padding: 0 8px; }
+.qperson { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; font-size: .9rem; }
+.qperson img { border-radius: 50%; }

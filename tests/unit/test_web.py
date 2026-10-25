@@ -302,3 +302,29 @@ class TestBreakingUpGroups:
         assert "Part A" in html and "Part B" in html and "Select this part" in html
         part_b = html.split("Part B")[1]
         assert f'value="{faces_b[0]}"' in part_b and not any(f'value="{f}"' in part_b for f in faces_a)
+
+
+class TestQuickCheck:
+    def test_check_page_and_answers(self, env):
+        app, lib, client = env
+        login(client)
+        faces = lib.faces_of(0)
+        a = app.people.split(faces[:4], "A")
+        b = app.people.split(faces[4:], "")
+        html = client.get("/check").text
+        assert "What FaceGroup has learned" in html
+        assert "the same person?" in html  # A and Face b look alike
+        r = client.post("/check/answer", data={"kind": "same_person", "person": str(a), "other": str(b), "answer": "no"})
+        assert r.status_code == 303 and r.headers["location"] == "/check"
+        assert "the same person?" not in client.get("/check").text  # not asked again
+
+    def test_answers_validate_input(self, env):
+        _, _, client = env
+        login(client)
+        for data in ({"kind": "is_person", "face": "x", "person": "1"}, {"kind": "nope"}, {}):
+            assert client.post("/check/answer", data=data).status_code == 303  # ignored, no crash
+
+    def test_nav_has_check(self, env):
+        _, _, client = env
+        login(client)
+        assert 'href="/check"' in client.get("/people").text

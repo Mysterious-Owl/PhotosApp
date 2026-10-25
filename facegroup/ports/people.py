@@ -58,17 +58,29 @@ class Clusterer(Protocol):
 
 
 class PeopleStore(Protocol):
-    def confirmed_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """(face_ids, person_ids, vectors) of faces the user confirmed for real people ("Not a person" excluded)."""
+    def confirmed_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """(face_ids, person_ids, vectors, item_ids) of faces the user confirmed for real people."""
         ...
 
-    def votable_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, list[int | None]]:
-        """(face_ids, vectors, current person) of faces not decided by the user (unassigned or auto)."""
+    def votable_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, list[int | None], list[int]]:
+        """(face_ids, vectors, current person, item_ids) of faces not decided by the user (unassigned or auto)."""
         ...
 
-    def unassigned_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """(face_ids, vectors, qualities) of faces with no person, excluding suppressed ones."""
+    def unassigned_faces(self, model_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """(face_ids, vectors, qualities, item_ids) of faces with no person."""
         ...
+
+    def auto_assignments(self) -> list[tuple[int, int, float, int]]: ...
+
+    def feedback(self) -> list[tuple[float, int, int]]: ...
+
+    def mark_distinct(self, a: int, b: int) -> None: ...
+
+    def distinct_pairs(self) -> set[tuple[int, int]]: ...
+
+    def get_setting(self, key: str): ...
+
+    def set_setting(self, key: str, value) -> None: ...
 
     def face_vectors(self, face_ids: list[int], model_id: str) -> tuple[list[int], np.ndarray]: ...
 

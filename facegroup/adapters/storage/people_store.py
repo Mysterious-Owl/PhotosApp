@@ -29,30 +29,31 @@ class SqlitePeopleStore(SqliteBase):
         rows = self._read().execute(
             # Only real people vote. Faces marked "Not a person" never pull others in automatically: one marked
             # face of a real person would otherwise drag that person's look-alikes into the hidden group.
-            "SELECT f.id, f.person_id, e.vector FROM face f JOIN face_embedding e ON e.face_id=f.id "
+            "SELECT f.id, f.person_id, e.vector, f.item_id FROM face f JOIN face_embedding e ON e.face_id=f.id "
             "JOIN person p ON p.id=f.person_id "
             "WHERE e.model_id=? AND f.assigned_by='user' AND p.kind='person' ORDER BY f.id",
             (model_id,),
         ).fetchall()
         return (np.array([r[0] for r in rows], np.int64), np.array([r[1] for r in rows], np.int64),
-                _stack([r[2] for r in rows]))
+                _stack([r[2] for r in rows]), np.array([r[3] for r in rows], np.int64))
 
     def votable_faces(self, model_id: str):
         rows = self._read().execute(
-            "SELECT f.id, e.vector, f.person_id FROM face f JOIN face_embedding e ON e.face_id=f.id "
+            "SELECT f.id, e.vector, f.person_id, f.item_id FROM face f JOIN face_embedding e ON e.face_id=f.id "
             "WHERE e.model_id=? AND (f.assigned_by IS NULL OR f.assigned_by='auto') ORDER BY f.id",
             (model_id,),
         ).fetchall()
-        return np.array([r[0] for r in rows], np.int64), _stack([r[1] for r in rows]), [r[2] for r in rows]
+        return (np.array([r[0] for r in rows], np.int64), _stack([r[1] for r in rows]), [r[2] for r in rows],
+                [r[3] for r in rows])
 
     def unassigned_faces(self, model_id: str):
         rows = self._read().execute(
-            "SELECT f.id, e.vector, f.quality FROM face f JOIN face_embedding e ON e.face_id=f.id "
+            "SELECT f.id, e.vector, f.quality, f.item_id FROM face f JOIN face_embedding e ON e.face_id=f.id "
             "WHERE e.model_id=? AND f.person_id IS NULL ORDER BY f.id",
             (model_id,),
         ).fetchall()
         return (np.array([r[0] for r in rows], np.int64), _stack([r[1] for r in rows]),
-                np.array([r[2] for r in rows], np.float32))
+                np.array([r[2] for r in rows], np.float32), np.array([r[3] for r in rows], np.int64))
 
     def face_vectors(self, face_ids: list[int], model_id: str) -> tuple[list[int], np.ndarray]:
         if not face_ids:
@@ -172,6 +173,41 @@ class SqlitePeopleStore(SqliteBase):
         ).fetchone()
         return (r[0], (r[1], r[2], r[3], r[4])) if r else None
 
+    # -- learning: scorecard, "different people", settings ------------------------------------------------
+
+    def auto_assignments(self) -> list[tuple[int, int, float, int]]:
+        """(face_id, person_id, score, item_id) of automatic matches, least confident first."""
+        rows = self._read().execute(
+            "SELECT f.id, f.person_id, f.assign_score, f.item_id FROM face f JOIN person p ON p.id=f.person_id "
+            "WHERE f.assigned_by='auto' AND p.kind='person' ORDER BY f.assign_score"
+        ).fetchall()
+        return [(r[0], r[1], r[2] or 0.0, r[3]) for r in rows]
+
+    def feedback(self) -> list[tuple[float, int, int]]:
+        """(score, correct, person_id) for every judged automatic match, oldest first."""
+        rows = self._read().execute(
+            "SELECT score, correct, person_id FROM assign_feedback WHERE score IS NOT NULL ORDER BY id").fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+
+    def mark_distinct(self, a: int, b: int) -> None:
+        lo, hi = min(a, b), max(a, b)
+        now = iso(self._now())
+        self._write(lambda c: c.execute(
+            "INSERT OR IGNORE INTO person_distinct(a, b, at) VALUES(?, ?, ?)", (lo, hi, now)))
+
+    def distinct_pairs(self) -> set[tuple[int, int]]:
+        return {(r[0], r[1]) for r in self._read().execute("SELECT a, b FROM person_distinct")}
+
+    def get_setting(self, key: str):
+        r = self._read().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return json.loads(r[0]) if r else None
+
+    def set_setting(self, key: str, value) -> None:
+        text = json.dumps(value)
+        self._write(lambda c: c.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, text)))
+
     # -- changes and undo ------------------------------------------------------------------------------
 
     def apply_change(self, ch: PeopleChange) -> int | None:
@@ -276,10 +312,28 @@ class SqlitePeopleStore(SqliteBase):
                 "faces": before, "created": created, "deleted_persons": deleted_persons,
                 "deleted_rejects": deleted_rejects, "added_rejects": added_rejects, "renamed": renamed,
             }
-            c.execute(
+            event_id = c.execute(
                 "INSERT INTO people_event(action, person_id, payload_json, at) VALUES(?, ?, ?, ?)",
                 (ch.action, target, json.dumps(payload), now),
-            )
+            ).lastrowid
+            # Scorecard: the user just judged faces that FaceGroup had matched automatically.
+            rejected_pairs = set(rejects)
+            for f in explicit:
+                was_person, was_by, was_score = before.get(f, [None, None, None])
+                if was_by != "auto" or was_person is None:
+                    continue
+                if ch.unassign:
+                    if (f, was_person) not in rejected_pairs:
+                        continue
+                    correct = 0
+                elif target is not None:
+                    correct = int(target == was_person)
+                else:
+                    continue
+                c.execute(
+                    "INSERT INTO assign_feedback(event_id, face_id, person_id, score, correct, at) VALUES(?,?,?,?,?,?)",
+                    (event_id, f, was_person, was_score, correct, now),
+                )
             return target
 
         return self._write(op)
@@ -307,6 +361,7 @@ class SqlitePeopleStore(SqliteBase):
                 c.execute("UPDATE person SET name=? WHERE id=?", (old, pid))
             if p["created"] is not None:
                 c.execute("DELETE FROM person WHERE id=?", (p["created"],))
+            c.execute("DELETE FROM assign_feedback WHERE event_id=?", (ev[0],))
             c.execute("UPDATE people_event SET undone=1 WHERE id=?", (ev[0],))
             return ev[1]
 

@@ -570,3 +570,13 @@ Where the M1 code deliberately differs from, or adds to, the design above:
 - **Keyword index:** an FTS5 table over each file's relative path, kept in sync by triggers on `media`. User text is always quoted, so it is never FTS syntax. OCR text joins this index in M4.
 - **Search** = SQL filters (person, date, folder) -> vector ranking over the remaining items, plus keyword ranking -> reciprocal rank fusion -> one result per photo. Empty text with filters lists photos newest first.
 - **Model choice and parity checks:** docs/EVALUATION.md §6.
+
+## 12. Self-improvement (2026-10-25)
+
+- **Same-photo rule:** two faces in one photo are two different people. Automatic matching keeps only the most confident face per (photo, person), and a photo that already has a confirmed face of someone gets no second automatic one. Suggested groups keep one face per photo, and groups that share a photo never merge.
+- **Scorecard** (`assign_feedback`): each time the user confirms, rejects or moves a face that was matched automatically, FaceGroup records whether it was right, with its confidence at the time. Rows are removed with their event on Undo.
+- **Learned strictness:** a self-test replays up to 2,500 confirmed faces, spread across people. Each is matched against all the others as if it were unlabelled, and the scorecard rows are added. FaceGroup chooses the loosest threshold whose measured precision meets the target (98% by default), overall and per person, kept within [global - 0.08, global + 0.15] and [0.35, 0.75]. It needs 30 examples to become stricter but 200 to become looser than the default. It re-runs only after 2% more labels or 10 more judged matches (about 1.5 s at 20k confirmed faces). The result is stored in `settings.calibration` and shown on the Check page.
+- **Quick check** (`/check`), asking what teaches most per click:
+  - Is this group someone you know? A "no" records rejections, so the question is not asked again.
+  - Are these two people the same? A "no" is stored in `person_distinct` and never asked again. People seen together in one photo are never asked about.
+  - The automatic matches closest to their person's threshold.

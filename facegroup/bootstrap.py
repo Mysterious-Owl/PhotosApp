@@ -24,7 +24,7 @@ from facegroup.ports.face import FaceAnalyzer
 from facegroup.services.indexing import IndexingService, IndexingSettings, Progress
 from facegroup.services.library import LibraryService
 from facegroup.services.media import MediaService
-from facegroup.services.people import PeopleService, SuggestPolicy
+from facegroup.services.people import LearnPolicy, PeopleService, SuggestPolicy
 from facegroup.services.search import SearchService
 from facegroup.ports.search import Embedder
 
@@ -153,6 +153,7 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
         SuggestPolicy(settings.suggest_min_quality, settings.suggest_member_similarity,
                       settings.suggest_merge_similarity, settings.suggest_min_group),
         on_forget=remove_crops,
+        learn_policy=LearnPolicy(target_precision=settings.learn_target_precision),
     )
     media = MediaService(store, people_store, decoder, cache)
     search_store = SqliteSearchStore(settings.db_path, writer)

@@ -100,3 +100,65 @@ def test_split_into_parts_keeps_one_person_together():
     vecs, _, _ = identities(n_people=1, per=8)
     assert len(split_into_parts(vecs)) == 1
     assert split_into_parts(vecs[:0]) == []
+
+
+# -- self-improvement rules ---------------------------------------------------------------------------------
+
+from facegroup.domain.people import Vote, calibrate, dedupe_photos, one_per_photo  # noqa: E402
+
+
+def test_one_per_photo_keeps_the_most_confident_vote():
+    votes = [Vote(1, 0.6), Vote(1, 0.8), Vote(2, 0.5), None]
+    items = [10, 10, 10, 11]
+    assert one_per_photo(votes, items, set()) == [None, Vote(1, 0.8), Vote(2, 0.5), None]
+
+
+def test_one_per_photo_respects_confirmed_faces():
+    # Photo 10 already has a confirmed face of person 1: no automatic second "person 1" there.
+    assert one_per_photo([Vote(1, 0.9)], [10], {(10, 1)}) == [None]
+
+
+def test_dedupe_photos_keeps_one_face_per_photo():
+    vecs, labels, _ = identities(n_people=2, per=4)
+    idx = np.arange(5)  # 4 of A plus one B
+    items = np.array([1, 2, 3, 3, 3])  # faces 2,3,4 share photo 3
+    kept = dedupe_photos(idx, items, vecs)
+    assert len(kept) == 3 and len(set(items[kept].tolist())) == 3
+    assert 4 not in kept.tolist()  # the stranger (B) was the worst fit in the shared photo
+
+
+def test_groups_sharing_a_photo_never_merge():
+    vecs, labels, _ = identities(n_people=1, per=6)
+    a, b = np.arange(3), np.arange(3, 6)
+    items = np.array([1, 2, 3, 3, 4, 5])  # same photo appears in both groups
+    assert len(merge_groups([a, b], vecs, 0.5, items=items)) == 2
+    assert len(merge_groups([a, b], vecs, 0.5)) == 1  # without the photo rule they would merge
+
+
+def test_leave_one_out_never_lets_a_face_vote_for_itself():
+    vecs, labels, _ = identities(n_people=3, per=5)
+    votes = knn_assign(vecs, vecs, labels, {}, AssignPolicy(k=5, threshold=0.4), leave_one_out=True)
+    assert all(v and v.person_id == lab for v, lab in zip(votes, labels))
+    lonely = knn_assign(vecs[:1], vecs[:1], labels[:1], {}, AssignPolicy(), leave_one_out=True)
+    assert lonely == [None]  # its only reference is itself
+
+
+def test_person_threshold_overrides_default():
+    vecs, labels, centres = identities(n_people=1, per=5)
+    q = centres
+    strict = AssignPolicy(threshold=0.4, person_thresholds={100: 0.999})
+    assert knn_assign(q, vecs, labels, {}, strict) == [None]
+    loose = AssignPolicy(threshold=0.999, person_thresholds={100: 0.4})
+    assert knn_assign(q, vecs, labels, {}, loose)[0].person_id == 100
+
+
+def test_calibrate_picks_loosest_threshold_meeting_target():
+    rng = np.random.default_rng(0)
+    right = rng.uniform(0.45, 0.9, 300)  # correct matches score high
+    wrong = rng.uniform(0.30, 0.50, 60)  # mistakes cluster low
+    scores = np.r_[right, wrong]
+    correct = np.r_[np.ones(300), np.zeros(60)]
+    c = calibrate(scores, correct, target=0.98, min_samples=30)
+    assert c.threshold is not None and 0.42 <= c.threshold <= 0.52
+    assert c.precision >= 0.98
+    assert calibrate(scores[:10], correct[:10], 0.98, min_samples=30).threshold is None  # not enough evidence

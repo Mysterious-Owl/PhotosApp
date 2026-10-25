@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Quick check{% endblock %}
+{% block main %}
+<h1>Quick check <span class="count">{{ questions|length }} question{{ 's' if questions|length != 1 }}</span></h1>
+<p class="hint">FaceGroup asks only what it is least sure about. Each answer teaches it more than confirming easy
+  faces, and it tunes itself from your answers.</p>
+
+<section class="card learned">
+  <h2>What FaceGroup has learned</h2>
+  {% if stats.source == "default" %}
+  <p>Not enough confirmed faces yet to tune itself, so it uses the starting strictness ({{ stats.threshold }}).
+    Name a few more people, or answer the questions below. It learns from about {{ min_samples }} confirmed faces.</p>
+  {% else %}
+  <p>Matching strictness <strong>{{ stats.threshold }}</strong>
+    {% if stats.source == "learned" %}learned from {{ stats.samples }} examples: when FaceGroup matches a face
+    automatically, it was right <strong>{{ (100 * stats.precision)|round(1) }}%</strong> of the time in its self-test
+    (target {{ (100 * stats.target)|round(0)|int }}%).
+    {% else %}set to its most careful level: in its self-test it could not reach the {{ (100 * stats.target)|round(0)|int }}% target.{% endif %}</p>
+  {% if stats.source == "learned" and stats.samples < 200 and stats.threshold <= 0.42 %}<p class="meta">It will only
+    loosen below its starting strictness once it has 200+ examples; until then it can only become more careful.</p>{% endif %}
+  {% if stats.per_person %}<p class="meta">{{ stats.per_person|length }} people have their own strictness (looser for
+    people whose faces vary a lot, stricter for look-alikes).</p>{% endif %}
+  {% endif %}
+  <p class="meta">
+    {% if stats.accuracy_recent is not none %}Of the last {{ stats.judged_recent }} automatic matches you checked,
+    {{ (100 * stats.accuracy_recent)|round(1) }}% were right. {% endif %}
+    {{ stats.auto_matches }} automatic match{{ 'es' if stats.auto_matches != 1 }} not yet checked.
+  </p>
+</section>
+
+{% if not questions %}
+<p>Nothing to ask right now. New questions appear as photos are added and people are named.</p>
+{% endif %}
+
+{% for q in questions %}
+<article class="card question">
+  {% if q.kind == "group_is" %}
+  <h2>Is this group {{ people[q.person_id]|label }}?</h2>
+  <div class="row qfaces">
+    {% for f in q.face_ids %}<img src="/faces/{{ f }}.jpg" alt="" width="72" height="72" loading="lazy">{% endfor %}
+    <span class="vs">vs</span>
+    {% if people[q.person_id].cover_face_id %}<img class="ref" src="/faces/{{ people[q.person_id].cover_face_id }}.jpg" alt="" width="72" height="72">{% endif %}
+  </div>
+  <form method="post" action="/check/answer" class="row">
+    <input type="hidden" name="kind" value="group_is"><input type="hidden" name="suggestion" value="{{ q.suggestion_id }}">
+    <input type="hidden" name="person" value="{{ q.person_id }}">
+    <button class="btn primary" name="answer" value="yes">Yes</button>
+    <button class="btn" name="answer" value="no">No</button>
+    <a class="link" href="/suggestions/{{ q.suggestion_id }}">Review faces one by one</a>
+  </form>
+
+  {% elif q.kind == "same_person" %}
+  <h2>Are {{ people[q.person_id]|label }} and {{ people[q.other_id]|label }} the same person?</h2>
+  <div class="row qfaces">
+    {% for pid in (q.person_id, q.other_id) %}
+    <a href="/people/{{ pid }}" class="qperson">
+      {% if people[pid].cover_face_id %}<img src="/faces/{{ people[pid].cover_face_id }}.jpg" alt="" width="96" height="96">{% endif %}
+      <span>{{ people[pid]|label }} · {{ people[pid].faces }} faces</span></a>
+    {% if loop.first %}<span class="vs">?</span>{% endif %}
+    {% endfor %}
+  </div>
+  <form method="post" action="/check/answer" class="row">
+    <input type="hidden" name="kind" value="same_person">
+    <input type="hidden" name="person" value="{{ q.person_id }}"><input type="hidden" name="other" value="{{ q.other_id }}">
+    <button class="btn primary" name="answer" value="yes">Yes, combine</button>
+    <button class="btn" name="answer" value="no">No, different people</button>
+  </form>
+
+  {% elif q.kind == "is_person" %}
+  <h2>Is this {{ people[q.person_id]|label }}?</h2>
+  <div class="row qfaces">
+    <img src="/faces/{{ q.face_id }}.jpg" alt="" width="96" height="96">
+    <span class="vs">vs</span>
+    {% if people[q.person_id].cover_face_id %}<img class="ref" src="/faces/{{ people[q.person_id].cover_face_id }}.jpg" alt="" width="96" height="96">{% endif %}
+    <a class="link" href="/photos/{{ media_of[q.face_id] }}?face={{ q.face_id }}">View the photo</a>
+  </div>
+  <form method="post" action="/check/answer" class="row">
+    <input type="hidden" name="kind" value="is_person">
+    <input type="hidden" name="face" value="{{ q.face_id }}"><input type="hidden" name="person" value="{{ q.person_id }}">
+    <button class="btn primary" name="answer" value="yes">Yes</button>
+    <button class="btn" name="answer" value="no">No</button>
+  </form>
+  {% endif %}
+</article>
+{% endfor %}
+{% endblock %}
