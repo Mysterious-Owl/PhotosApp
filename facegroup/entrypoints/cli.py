@@ -91,6 +91,9 @@ def scan(
                 o = a.organize.refresh()
                 typer.echo(f"  organise: {o['categorised']} categorised, {o['duplicate_sets']} duplicate set(s), "
                            f"{o['stacks']} burst stack(s)")
+                r = a.indexing.run_ocr()
+                progress.reset()
+                typer.echo(f"  {r.stage.value}: {r.done} done, {r.failed} failed")
                 changed, groups = a.people.refresh()
                 typer.echo(f"  people: {changed} face(s) matched to known people, {groups} suggested group(s)")
         proc = psutil.Process()

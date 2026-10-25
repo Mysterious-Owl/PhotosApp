@@ -38,16 +38,19 @@
 {% endif %}
 
 {% if result is none %}
-<p class="hint">Describe what is in the photo ("kids on a beach", "birthday cake", "snowy mountains"), pick a person, or narrow by date or folder. Words in file and folder names also match.</p>
+<p class="hint">Describe what is in the photo ("kids on a beach", "birthday cake"), type people's names ("Mom and Dad
+  beach"), or search words written in screenshots, receipts and documents. Narrow by person, date, folder or kind.</p>
 {% elif not result.hits %}
 <p>No photos match{% if result.candidates %} among {{ result.candidates }} photos that fit the filters{% endif %}.</p>
 {% else %}
-<p class="meta">Best matches first{% if result.candidates %}, from {{ result.candidates }} photos{% endif %}.</p>
+<p class="meta">{% if result.people %}With {% for pid in result.people %}<strong>{{ people_by_id[pid]|label if pid in people_by_id else pid }}</strong>{{ ', ' if not loop.last }}{% endfor %}
+  (<a href="{{ literal_url }}">search the words instead</a>) ·
+  {% endif %}Best matches first{% if result.candidates %}, from {{ result.candidates }} photos{% endif %}.</p>
 <div class="results">
   {% for h in result.hits[:shown] %}
   <a href="/photos/{{ h.media_id }}">
     <img src="/media/{{ h.media_id }}/thumb.jpg" alt="" loading="lazy">
-    {% if h.keyword_rank and not h.vector_rank %}<span class="why">name match</span>{% endif %}
+    {% if h.text_rank %}<span class="why">text in photo</span>{% elif h.keyword_rank and not h.vector_rank %}<span class="why">file name</span>{% endif %}
     {% if h.stack_size > 1 %}<span class="stackn" title="{{ h.stack_size }} similar shots">+{{ h.stack_size - 1 }}</span>{% endif %}
   </a>
   {% endfor %}

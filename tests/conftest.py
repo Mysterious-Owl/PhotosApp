@@ -72,6 +72,20 @@ class FakeEmbedder:
         pass
 
 
+class FakeReader:
+    """Stand-in OCR: 'reads' the text a test drew by looking it up from the image's mean colour."""
+
+    model_id = "fake-ocr-v1"
+    texts: dict[tuple[int, int, int], str] = {}
+
+    def read(self, image_rgb):
+        key = tuple(int(round(v / 10) * 10) for v in image_rgb.reshape(-1, 3).mean(axis=0))
+        return FakeReader.texts.get(key, "")
+
+    def close(self) -> None:
+        pass
+
+
 def make_photo(path: Path, size=(400, 300), color=(200, 120, 80), exif_orientation: int | None = None,
                fmt: str | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,7 +128,8 @@ def make_app(settings):
     def factory(analyzer=None, **overrides) -> App:
         s = settings.model_copy(update=overrides) if overrides else settings
         a = build(s, analyzer_factory=analyzer or FakeAnalyzer, face_model_id=FakeAnalyzer.model_id,
-                  embedder=FakeEmbedder, embed_model_id=FakeEmbedder.model_id)
+                  embedder=FakeEmbedder, embed_model_id=FakeEmbedder.model_id,
+                  reader_factory=FakeReader, ocr_model_id=FakeReader.model_id)
         apps.append(a)
         return a
 

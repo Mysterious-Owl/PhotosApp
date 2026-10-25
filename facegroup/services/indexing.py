@@ -15,7 +15,7 @@ import numpy as np
 from facegroup.domain.entities import Job, Stage
 from facegroup.domain.policies import QualityGate
 from facegroup.ports.face import FaceAnalyzer
-from facegroup.ports.media import ImageCache, MediaDecoder, PermanentMediaError
+from facegroup.ports.media import ImageCache, MediaDecoder, PermanentMediaError, TextReader
 from facegroup.ports.search import Embedder
 from facegroup.ports.store import ImageMeta, Store
 
@@ -50,7 +50,9 @@ class IndexingService:
                  suppressed: Callable[[str], np.ndarray] = lambda model_id: np.zeros((0, 512), np.float32),
                  suppress_similarity: float = 0.5,
                  embedder_factory: Callable[[], Embedder] | None = None, embed_model_id: str | None = None,
-                 phash: Callable[[np.ndarray], int] | None = None) -> None:
+                 phash: Callable[[np.ndarray], int] | None = None,
+                 reader_factory: Callable[[], TextReader] | None = None, ocr_model_id: str | None = None,
+                 ocr_all_photos: bool = False) -> None:
         self._store = store
         self._decoder = decoder
         self._cache = cache
@@ -64,6 +66,9 @@ class IndexingService:
         self._suppress_similarity = suppress_similarity
         self._suppressed = np.zeros((0, 512), np.float32)
         self._phash = phash
+        self._make_reader = reader_factory
+        self._ocr_model_id = ocr_model_id if reader_factory else None
+        self._ocr_all = ocr_all_photos
         self._make_embedder = embedder_factory
         self._embed_model_id = embed_model_id if embedder_factory else None
 
@@ -179,6 +184,33 @@ class IndexingService:
         for job, vec in zip(jobs, vectors):
             ok = self._guarded(job, lambda j, v=vec: self._store.finish_embed(j, v), report)
             self._count(report, ok)
+
+    # -- ocr: text in pictures likely to have it (runs after organising, which decides what is a screenshot) ---
+
+    def run_ocr(self) -> StageReport:
+        report = StageReport(Stage.OCR)
+        if not self._ocr_model_id:
+            return report
+        self._store.enqueue_ocr(self._ocr_model_id, self._ocr_all)
+        reader: TextReader | None = None
+        try:
+            with ThreadPoolExecutor(self._s.decode_workers, thread_name_prefix="load") as pool:
+                while not self._should_stop():
+                    jobs = self._store.lease_jobs(Stage.OCR, self._s.batch_size,
+                                                  self._s.lease_seconds, self._s.max_attempts)
+                    if not jobs:
+                        break
+                    if reader is None:
+                        reader = self._make_reader()
+                    images = [pool.submit(self._working_image, j) for j in jobs]
+                    for job, image in zip(jobs, images):
+                        ok = self._guarded(job, lambda j, im=image: self._store.finish_ocr(j, reader.read(im.result())), report)
+                        self._count(report, ok)
+                    self._cleanup([j.item_id for j in jobs if j.item_id is not None])
+        finally:
+            if reader is not None:
+                reader.close()
+        return report
 
     def _working_image(self, job: Job) -> np.ndarray:
         try:

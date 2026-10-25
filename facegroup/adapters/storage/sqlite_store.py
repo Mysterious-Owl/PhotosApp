@@ -307,6 +307,33 @@ class SqliteStore(SqliteBase):
 
         self._write(op)
 
+    def finish_ocr(self, job: Job, text: str) -> None:
+        def op(c: sqlite3.Connection) -> None:
+            c.execute("DELETE FROM item_text WHERE item_id=? AND source='ocr'", (job.item_id,))
+            if text:
+                c.execute("INSERT INTO item_text(item_id, source, model_id, body) VALUES(?, 'ocr', ?, ?)",
+                          (job.item_id, job.model_id, text))
+            c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
+
+        self._write(op)
+
+    def enqueue_ocr(self, model_id: str, all_photos: bool) -> int:
+        """Queue text reading for pictures likely to contain text (screenshots, documents, receipts, memes),
+        or for everything when `all_photos` is on. Each item once per model."""
+        where = "" if all_photos else "AND COALESCE(mc.category, 'photo') IN ('screenshot', 'document', 'receipt', 'meme')"
+
+        def op(c: sqlite3.Connection) -> int:
+            return c.execute(
+                "INSERT OR IGNORE INTO job(media_id, item_id, stage, model_id) "
+                "SELECT i.media_id, i.id, 'ocr', ? FROM item i JOIN media m ON m.id=i.media_id "
+                "LEFT JOIN media_category mc ON mc.media_id=m.id "
+                f"WHERE m.file_state='active' {where} AND NOT EXISTS ("
+                "  SELECT 1 FROM job j WHERE j.item_id=i.id AND j.stage='ocr' AND j.model_id=?)",
+                (model_id, model_id),
+            ).rowcount
+
+        return self._write(op)
+
     def enqueue_missing(self, stage: Stage, model_id: str) -> int:
         """Queue `stage` for every item of an active photo that has no job for this model yet."""
         def op(c: sqlite3.Connection) -> int:

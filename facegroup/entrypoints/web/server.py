@@ -240,7 +240,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
 
     @web.get("/search", response_class=HTMLResponse)
     def search_page(request: Request, q: str = "", person: str = "", date_from: str = "", date_to: str = "",
-                    folder: str = "", similar: int | None = None, n: int = 60, kind: str = "", fav: str = ""):
+                    folder: str = "", similar: int | None = None, n: int = 60, kind: str = "", fav: str = "",
+                    names: str = "1"):
         root_id, folder_path = None, None
         if ":" in folder and folder.split(":", 1)[0].isdigit():
             root_id, folder_path = int(folder.split(":", 1)[0]), folder.split(":", 1)[1]
@@ -253,14 +254,17 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         if similar is not None:
             result = app.search.similar(similar, filters)
         elif searched:
-            result = app.search.search(q, filters)
+            result = app.search.search(q, filters, parse_names=names != "0")
         done, total = app.search_store.embedding_coverage(app.search.model_id) if app.search.model_id else (0, 0)
         shown = max(12, min(n, 200))
         more_url = None
         if result and len(result.hits) > shown:
             more = request.url.include_query_params(n=shown + 60)
             more_url = f"{more.path}?{more.query}"
+        literal = request.url.include_query_params(names="0")
         return page(request, "search.html", q=q, result=result, shown=shown, more_url=more_url,
+                    literal_url=f"{literal.path}?{literal.query}",
+                    people_by_id={p.id: p for p in app.people.people()},
                     people=app.people.people(),
                     folders=app.search_store.top_folders(), sel_person=person, date_from=date_from,
                     date_to=date_to, folder=folder, similar=similar, coverage=(done, total), kind=kind, fav=fav,

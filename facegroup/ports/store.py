@@ -75,6 +75,10 @@ class Store(Protocol):
 
     def enqueue_missing(self, stage: Stage, model_id: str) -> int: ...
 
+    def finish_ocr(self, job: Job, text: str) -> None: ...
+
+    def enqueue_ocr(self, model_id: str, all_photos: bool) -> int: ...
+
     def finish_faces(self, job: Job, faces: list[DetectedFace], qualities: list[float],
                      detector_id: str) -> list[int]:
         """Store the faces (reusing overlapping rows so labels survive) and return their ids, in order."""

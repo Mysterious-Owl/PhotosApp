@@ -99,7 +99,8 @@ def setup_logging(settings: Settings) -> None:
 def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | None = None,
           face_model_id: str | None = None, progress: Progress | None = None,
           should_stop: Callable[[], bool] = lambda: False,
-          embedder: Callable[[], Embedder] | None = None, embed_model_id: str | None = None) -> App:
+          embedder: Callable[[], Embedder] | None = None, embed_model_id: str | None = None,
+          reader_factory=None, ocr_model_id: str | None = None) -> App:
     """Wire adapters into services. Tests pass a fake analyzer_factory + face_model_id."""
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     assert_not_synced(settings.data_dir)
@@ -123,6 +124,10 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
     assert face_model_id is not None
     if embedder is None and embed_model_id is None:
         embedder, embed_model_id = embedder_factory(settings)
+    if reader_factory is None and ocr_model_id is None and settings.ocr_enabled:
+        from facegroup.adapters.models.ocr import RapidOcrReader
+
+        reader_factory, ocr_model_id = RapidOcrReader, RapidOcrReader.model_id
 
     indexing = IndexingService(
         store=store,
@@ -145,6 +150,9 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
         embedder_factory=embedder,
         embed_model_id=embed_model_id,
         phash=lambda rgb: to_signed(dhash(rgb)),
+        reader_factory=reader_factory,
+        ocr_model_id=ocr_model_id,
+        ocr_all_photos=settings.ocr_all_photos,
     )
     library = LibraryService(store, LocalFileSource(), settings.missing_grace_days)
 
@@ -164,7 +172,8 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
     )
     media = MediaService(store, people_store, decoder, cache)
     search_store = SqliteSearchStore(settings.db_path, writer)
-    search = SearchService(search_store, embedder or (lambda: None), embed_model_id or "")
+    search = SearchService(search_store, embedder or (lambda: None), embed_model_id or "",
+                           people_names=lambda: [(p.id, p.name or f"Face {p.id}") for p in people_store.people()])
     organize_store = SqliteOrganizeStore(settings.db_path, writer)
 
     def thumbnail_hash(media_id: int) -> int | None:

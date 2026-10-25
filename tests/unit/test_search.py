@@ -118,3 +118,70 @@ def test_photos_indexed_before_search_existed_get_embedded(make_app, library_dir
     app = make_app()
     app.indexing.recover()  # notices the missing stage and queues it
     assert app.indexing.run_embed().done == 1
+
+
+# -- batch B: names in queries, text in images ----------------------------------------------------------------
+
+from facegroup.domain.search import parse_people  # noqa: E402
+from tests.conftest import FakeReader  # noqa: E402
+
+
+def test_parse_people_pulls_names_out_of_the_query():
+    people = [(1, "Mom"), (2, "Dad"), (3, "Anna Maria"), (4, "Anna"), (5, "")]
+    assert parse_people("Mom and Dad at the beach", people) == ([1, 2], "at the beach")
+    assert parse_people("anna maria, birthday cake", people) == ([3], "birthday cake")  # longest name wins
+    assert parse_people("kids with balloons", people) == ([], "kids with balloons")  # no names: untouched
+    assert parse_people("Momentum", people) == ([], "Momentum")  # whole words only
+    assert parse_people("Dad", people) == ([2], "")
+
+
+def test_query_names_become_person_filters(library):
+    app = library
+    face = count(app, "SELECT f.id FROM face f JOIN item i ON i.id=f.item_id JOIN media m ON m.id=i.media_id "
+                      "WHERE m.rel_path LIKE '%rose.jpg'")
+    pid = app.people.split([face], "Ann")
+    r = app.search.search("Ann red")
+    assert r.people == [pid] and names(app, r) == ["rose.jpg"]
+    literal = app.search.search("Ann red", parse_names=False)  # "search the words instead"
+    assert literal.people == [] and len(literal.hits) > 1
+
+
+def test_text_in_screenshots_is_searchable(make_app, library_dir):
+    make_photo(library_dir / "Screenshots" / "Screenshot 1.png", color=(240, 240, 240), size=(1920, 1080), fmt="PNG")
+    make_photo(library_dir / "holiday.jpg", color=(20, 120, 60))
+    FakeReader.texts = {(240, 240, 240): "Your order ORD-48213 has shipped\nTotal 1299.00"}
+    app = make_app()
+    app.library.scan(app.library.add_root(library_dir))
+    app.indexing.run_all()
+    app.organize.refresh()
+    report = app.indexing.run_ocr()
+    assert report.done == 1  # only the screenshot is read; the ordinary photo is skipped
+    result = app.search.search("order shipped")
+    assert names(app, result)[0] == "Screenshot 1.png"
+    assert result.hits[0].text_rank == 1
+    assert app.search.search("ORD-48213").hits[0].text_rank == 1
+
+
+def test_reading_all_photos_is_opt_in(make_app, library_dir):
+    make_photo(library_dir / "holiday.jpg", color=(20, 120, 60))
+    FakeReader.texts = {(20, 120, 60): "welcome to goa"}
+    app = make_app(ocr_all_photos=True)
+    app.library.scan(app.library.add_root(library_dir))
+    app.indexing.run_all()
+    app.organize.refresh()
+    assert app.indexing.run_ocr().done == 1
+    assert app.search.search("welcome").hits[0].text_rank == 1
+
+
+def test_ocr_text_disappears_with_its_photo(make_app, library_dir):
+    p = make_photo(library_dir / "Screenshots" / "Screenshot 2.png", color=(240, 240, 240), size=(1920, 1080), fmt="PNG")
+    FakeReader.texts = {(240, 240, 240): "secret code 777"}
+    app = make_app()
+    root = app.library.add_root(library_dir)
+    app.library.scan(root)
+    app.indexing.run_all()
+    app.organize.refresh()
+    app.indexing.run_ocr()
+    assert count(app, "SELECT COUNT(*) FROM ocr_fts") == 1
+    write_sql(app, "DELETE FROM media")  # e.g. removed after the missing grace period
+    assert count(app, "SELECT COUNT(*) FROM ocr_fts") == 0

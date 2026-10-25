@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Self-improvement: automatic matches must be right this often, measured on your own labels.
     learn_target_precision: float = 0.98
 
+    # Text in images (OCR). Off for ordinary photos by default (slow: ~2 s per text-heavy image on CPU).
+    ocr_enabled: bool = True
+    ocr_all_photos: bool = False
+
     # Search (M3). "none" turns image search off.
     search_model: str = "siglip2-base"
 

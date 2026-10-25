@@ -14,7 +14,8 @@ from facegroup.domain.entities import Stage
 
 log = logging.getLogger(__name__)
 
-_STAGE_LABEL = {Stage.DERIVE: "Preparing photos", Stage.FACES: "Finding faces", Stage.EMBED: "Learning what is in photos"}
+_STAGE_LABEL = {Stage.DERIVE: "Preparing photos", Stage.FACES: "Finding faces", Stage.EMBED: "Learning what is in photos",
+                Stage.OCR: "Reading text in screenshots and documents"}
 
 
 class Scheduler:
@@ -99,5 +100,7 @@ class Scheduler:
             return
         self._set(state="grouping", stage="organize", message="Sorting screenshots, duplicates and bursts")
         a.organize.refresh()
+        if not self._stop.is_set():
+            a.indexing.run_ocr()
         self._set(state="grouping", stage="people", message="Grouping faces")
         a.people.refresh()

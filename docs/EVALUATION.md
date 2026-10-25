@@ -163,6 +163,18 @@ So a near copy is 6 bits or fewer. Flat images (blank or black) have degenerate 
 
 **Bursts:** same folder, within 15 s, and embedding similarity ≥ 0.88 (crops of one scene stayed ≥ 0.90; 99.9% of different photos are < 0.81).
 
+## 8. Text in images (batch B, 2026-10-25)
+
+RapidOCR 3.10 with PaddleOCR PP-OCRv6 small detection and recognition (Apache-2.0; models bundled in the package, so nothing is downloaded). Measured on 24 synthetic images with known text (`tests/eval/eval_ocr.py`), never the user's library:
+
+| Setting | Words read back | Time per text-heavy image |
+|---|---|---|
+| Defaults, CPU | 100% | 3.3–3.7 s |
+| Defaults, DirectML | 100% | 3.9 s (slower than CPU, so not used) |
+| **Detector input capped at 960 px, no rotation classifier, CPU (shipped)** | **100%** | **2.2 s** |
+
+Synthetic text is clean, so 100% is an upper bound; real photos of signs or crumpled receipts will be lower. Because of the time, text is read by default only in pictures categorised as screenshot, document, receipt or meme; `ocr_all_photos = true` reads every photo. Text is searched with FTS5 alongside meaning and file names (reciprocal rank fusion), and is never written to logs.
+
 ## Reproduce
 
 ```powershell

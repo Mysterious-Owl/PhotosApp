@@ -41,6 +41,7 @@ class SearchHit:
     vector_rank: int | None = None
     keyword_rank: int | None = None
     stack_size: int = 1  # > 1: similar shots folded behind this one
+    text_rank: int | None = None  # rank among photos whose text (OCR) matched
 
 
 @dataclass
@@ -49,6 +50,7 @@ class SearchResult:
     candidates: int = 0  # photos left after filters
     used_vectors: bool = False
     missing_embeddings: int = 0  # candidates not yet embedded (indexing still running)
+    people: list[int] = field(default_factory=list)  # people recognised in the query text
 
 
 class SearchStore(Protocol):
@@ -65,6 +67,10 @@ class SearchStore(Protocol):
         ...
 
     def media_vector(self, media_id: int, model_id: str) -> np.ndarray | None: ...
+
+    def text_media(self, query: str, media_ids: np.ndarray | None, limit: int) -> list[int]:
+        """Photos whose text found in the image (OCR) matches, best first."""
+        ...
 
     def newest_first(self, media_ids: np.ndarray) -> list[int]: ...
 

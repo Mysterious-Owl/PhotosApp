@@ -108,6 +108,22 @@ class SqliteSearchStore(SqliteBase):
             hits = [m for m in hits if m in allowed]
         return hits[:limit]
 
+    def text_media(self, query: str, media_ids: np.ndarray | None, limit: int) -> list[int]:
+        """Photos whose text (OCR) matches every word of the query, best first."""
+        words = _WORD.findall(query.lower())
+        if not words:
+            return []
+        match = " AND ".join(f'"{w}"*' for w in words)
+        rows = self._read().execute(
+            "SELECT media_id FROM ocr_fts WHERE ocr_fts MATCH ? ORDER BY rank LIMIT ?",
+            (match, limit * 4 if media_ids is not None else limit),
+        ).fetchall()
+        hits = list(dict.fromkeys(int(r[0]) for r in rows))
+        if media_ids is not None:
+            allowed = set(media_ids.tolist())
+            hits = [m for m in hits if m in allowed]
+        return hits[:limit]
+
     def media_vector(self, media_id: int, model_id: str) -> np.ndarray | None:
         row = self._read().execute(
             "SELECT e.vector FROM item i JOIN item_embedding e ON e.item_id=i.id "

@@ -27,6 +27,7 @@ class Stage(StrEnum):
     DERIVE = "derive"  # media-level: decode once, working image, thumbnail, items
     FACES = "faces"  # item-level: detect, quality gate, embed
     EMBED = "embed"  # item-level: image embedding for search
+    OCR = "ocr"  # item-level: text in the image (only pictures likely to contain text, by default)
 
 
 @dataclass(frozen=True)
