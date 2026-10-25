@@ -5,9 +5,9 @@
 {% set hidden_group = person.kind == 'ignored' %}
 {% if hidden_group %}
 <h1>Not a person <span class="count">{{ person.faces }} faces</span></h1>
-<p class="hint">Faces you marked as not a person (cartoons, statues, animals…). Similar faces found later are put here
-  automatically. Pick any that are real people and choose <strong>This is a person</strong> to send them back to the
-  review groups, or move them straight to someone.</p>
+<p class="hint">Faces you marked as not a person (cartoons, statues, animals…). Only faces you mark come here;
+  nothing is added automatically. Pick any that are real people and choose <strong>This is a person</strong> to send
+  them back to the review groups, or move them straight to someone.</p>
 {% else %}
 <section class="person-head">
   {% if person.cover_face_id %}<img src="/faces/{{ person.cover_face_id }}.jpg" alt="" width="120" height="120">{% endif %}
