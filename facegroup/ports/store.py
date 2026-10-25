@@ -41,6 +41,7 @@ class ImageMeta:
     content_hash: str
     working_width: int
     working_height: int
+    phash: int | None = None  # 64-bit difference hash (signed for SQLite)
 
 
 class Store(Protocol):

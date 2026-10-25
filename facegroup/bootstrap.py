@@ -12,7 +12,9 @@ from facegroup.adapters.instance_lock import InstanceLock
 from facegroup.adapters.media.cache import DiskImageCache
 from facegroup.adapters.media.decoder import PillowDecoder
 from facegroup.adapters.media.files import LocalFileSource
+from facegroup.adapters.media.phash import dhash, to_signed
 from facegroup.adapters.storage.db import assert_not_synced, connect, migrate
+from facegroup.adapters.storage.organize_store import SqliteOrganizeStore
 from facegroup.adapters.storage.people_store import SqlitePeopleStore
 from facegroup.adapters.storage.search_store import SqliteSearchStore
 from facegroup.adapters.storage.sqlite_store import SqliteStore
@@ -25,6 +27,7 @@ from facegroup.services.indexing import IndexingService, IndexingSettings, Progr
 from facegroup.services.library import LibraryService
 from facegroup.services.media import MediaService
 from facegroup.services.people import LearnPolicy, PeopleService, SuggestPolicy
+from facegroup.services.organize import OrganizeService
 from facegroup.services.search import SearchService
 from facegroup.ports.search import Embedder
 
@@ -42,6 +45,8 @@ class App:
     media: MediaService
     search: SearchService
     search_store: SqliteSearchStore
+    organize: OrganizeService
+    organize_store: SqliteOrganizeStore
     _writer: DbWriter
     _lock: InstanceLock
 
@@ -50,6 +55,7 @@ class App:
         self.store.close()
         self.people_store.close()
         self.search_store.close()
+        self.organize_store.close()
         self._writer.close()
         self._lock.release()
 
@@ -138,6 +144,7 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
         suppressed=people_store.suppressed_vectors,
         embedder_factory=embedder,
         embed_model_id=embed_model_id,
+        phash=lambda rgb: to_signed(dhash(rgb)),
     )
     library = LibraryService(store, LocalFileSource(), settings.missing_grace_days)
 
@@ -158,5 +165,17 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
     media = MediaService(store, people_store, decoder, cache)
     search_store = SqliteSearchStore(settings.db_path, writer)
     search = SearchService(search_store, embedder or (lambda: None), embed_model_id or "")
+    organize_store = SqliteOrganizeStore(settings.db_path, writer)
+
+    def thumbnail_hash(media_id: int) -> int | None:
+        path = cache.thumbnail_path(media_id)
+        if not path.exists():
+            return None
+        import cv2
+        import numpy as np
+        bgr = cv2.imdecode(np.frombuffer(path.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+        return to_signed(dhash(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))) if bgr is not None else None
+
+    organize = OrganizeService(organize_store, search.embed_texts, embed_model_id or "", thumbnail_hash)
     return App(settings, store, people_store, cache, decoder, library, indexing, people, media, search,
-               search_store, writer, lock)
+               search_store, organize, organize_store, writer, lock)

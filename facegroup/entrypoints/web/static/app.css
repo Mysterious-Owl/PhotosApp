@@ -143,3 +143,23 @@ body:has(.pick input:checked) .combine-bar { display: flex; }
 .qfaces .vs { color: var(--muted); font-weight: 600; padding: 0 8px; }
 .qperson { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; font-size: .9rem; }
 .qperson img { border-radius: 50%; }
+
+.inline-check { flex-direction: row !important; align-items: center; gap: 6px !important; color: var(--text) !important; }
+.results .stackn { position: absolute; right: 4px; top: 4px; background: rgba(0,0,0,.65); color: #fff; font-size: .75rem;
+  padding: 1px 7px; border-radius: 10px; }
+.flags { margin: 6px 0 10px; }
+.stars { display: inline-flex; }
+.star { background: none; border: none; font-size: 1.3rem; color: var(--border); cursor: pointer; padding: 0 1px; }
+.star.on { color: var(--warn); }
+img.mini { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; }
+img.mini.top { outline: 3px solid var(--accent); }
+.current img.mini { outline: 3px solid var(--warn); }
+.tidy-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tidy-cats a { text-decoration: none; color: var(--text); }
+.tidy-cats strong { font-size: 1.4rem; display: block; }
+.dupset { margin: 10px 0; }
+.dupset .copies { display: flex; gap: 10px; flex-wrap: wrap; }
+.dupset .copy { width: 180px; font-size: .8rem; color: var(--muted); }
+.dupset .copy img { width: 180px; height: 135px; object-fit: cover; border-radius: 6px; display: block; }
+.dupset .copy.keeper img { outline: 3px solid var(--ok); }
+.dupset .copy.is-hidden img { opacity: .4; }

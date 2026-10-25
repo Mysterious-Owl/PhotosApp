@@ -97,5 +97,7 @@ class Scheduler:
         a.indexing.run_all()
         if self._stop.is_set():
             return
+        self._set(state="grouping", stage="organize", message="Sorting screenshots, duplicates and bursts")
+        a.organize.refresh()
         self._set(state="grouping", stage="people", message="Grouping faces")
         a.people.refresh()

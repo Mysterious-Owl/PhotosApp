@@ -328,3 +328,43 @@ class TestQuickCheck:
         _, _, client = env
         login(client)
         assert 'href="/check"' in client.get("/people").text
+
+
+class TestTidy:
+    @pytest.fixture
+    def tidy(self, make_app, library_dir):
+        from tests.unit.test_organize import organize_lib
+        app = organize_lib(make_app, library_dir)
+        client = TestClient(create_app(app, Scheduler(), TOKEN, PORT), base_url=BASE, follow_redirects=False)
+        login(client)
+        return app, client
+
+    def test_tidy_page_and_keep_a_copy(self, tidy):
+        app, client = tidy
+        html = client.get("/tidy").text
+        assert "Duplicates" in html and "Screenshots" in html and "1 set" in html
+        members = app.organize.duplicate_sets()[0]["members"]
+        loser = [m for m in members if not m["keeper"]][0]["id"]
+        client.post("/duplicates/keep", data={"keeper": str(loser)})  # user prefers another copy
+        assert count(app, "SELECT hidden FROM media WHERE id=?", loser) == 0
+        assert count(app, "SELECT COUNT(*) FROM media WHERE hidden=1") == len(members) - 1
+
+    def test_photo_flags_and_category(self, tidy):
+        app, client = tidy
+        m = count(app, "SELECT id FROM media WHERE rel_path LIKE '%b1.jpg'")
+        client.post(f"/photos/{m}/flags", data={"favorite": "1"})
+        client.post(f"/photos/{m}/flags", data={"rating": "4"})
+        client.post(f"/photos/{m}/flags", data={"category": "meme"})
+        f = app.organize_store.flags(m)
+        assert f["favorite"] == 1 and f["rating"] == 4 and f["category"] == "meme" and f["source"] == "user"
+        client.post(f"/photos/{m}/flags", data={"rating": "9"})  # invalid -> cleared, never stored
+        assert app.organize_store.flags(m)["rating"] is None
+        page = client.get(f"/photos/{m}").text
+        assert "Burst: 2 similar shots" in page and "★ Favourite" in page
+
+    def test_search_kind_filter_and_burst_badge(self, tidy):
+        app, client = tidy
+        html = client.get("/search?kind=screenshot").text
+        shot = count(app, "SELECT id FROM media WHERE rel_path LIKE '%Screenshot 2024.png'")
+        assert f"/photos/{shot}" in html
+        assert 'class="stackn"' in client.get("/search?q=red").text

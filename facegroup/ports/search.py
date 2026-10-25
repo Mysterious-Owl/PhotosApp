@@ -28,6 +28,10 @@ class SearchFilters:
     date_to: str | None = None
     root_id: int | None = None
     folder: str | None = None  # path prefix inside the root
+    kind: str | None = None  # "photos" = hide clutter; or one category (screenshot, document, receipt, meme, ...)
+    favorites: bool = False
+    min_rating: int | None = None
+    show_hidden: bool = False
 
 
 @dataclass(frozen=True)
@@ -36,6 +40,7 @@ class SearchHit:
     score: float
     vector_rank: int | None = None
     keyword_rank: int | None = None
+    stack_size: int = 1  # > 1: similar shots folded behind this one
 
 
 @dataclass
@@ -62,3 +67,5 @@ class SearchStore(Protocol):
     def media_vector(self, media_id: int, model_id: str) -> np.ndarray | None: ...
 
     def newest_first(self, media_ids: np.ndarray) -> list[int]: ...
+
+    def stack_map(self, media_ids: list[int]) -> dict[int, tuple[int, bool, int]]: ...

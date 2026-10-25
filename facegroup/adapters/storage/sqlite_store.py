@@ -228,8 +228,8 @@ class SqliteStore(SqliteBase):
         def op(c: sqlite3.Connection) -> list[int]:
             lat, lon = meta.gps if meta.gps else (None, None)
             c.execute(
-                "UPDATE media SET width=?, height=?, taken_at=?, gps_lat=?, gps_lon=?, content_hash=? WHERE id=?",
-                (meta.width, meta.height, meta.taken_at, lat, lon, meta.content_hash, job.media_id),
+                "UPDATE media SET width=?, height=?, taken_at=?, gps_lat=?, gps_lon=?, content_hash=?, phash=? WHERE id=?",
+                (meta.width, meta.height, meta.taken_at, lat, lon, meta.content_hash, meta.phash, job.media_id),
             )
             # Idempotent: a re-run after a crash replaces the items it made last time.
             c.execute("DELETE FROM item WHERE media_id=?", (job.media_id,))

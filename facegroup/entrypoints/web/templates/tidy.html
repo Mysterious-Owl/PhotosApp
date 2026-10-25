@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Tidy{% endblock %}
+{% block main %}
+<h1>Tidy up</h1>
+<p class="hint">FaceGroup sorts screenshots and other clutter, finds copies of the same photo, and folds bursts of
+  similar shots together. Everything here is a label inside FaceGroup: your files are never deleted, moved or changed.</p>
+
+<section>
+  <h2>What kind of pictures</h2>
+  <div class="tidy-cats">
+    {% for key, label in labels.items() %}
+    <a class="card" href="/search?kind={{ 'photos' if key == 'photo' else key }}">
+      <strong>{{ summary.categories.get(key, 0) }}</strong>{{ label }}</a>
+    {% endfor %}
+    <a class="card" href="/search?kind=hidden"><strong>{{ summary.hidden }}</strong>Hidden</a>
+  </div>
+  <p class="meta">Wrong guess? Open the picture and change its Kind; FaceGroup will not change it back. Use
+    “Photos only” in Search to leave clutter out.</p>
+</section>
+
+<section id="dup">
+  <h2>Duplicates <span class="count">{{ summary.duplicate_sets }} set{{ 's' if summary.duplicate_sets != 1 }},
+    {{ summary.duplicate_extra }} extra cop{{ 'ies' if summary.duplicate_extra != 1 else 'y' }}</span></h2>
+  {% if not sets %}<p>No duplicates found.</p>{% endif %}
+  {% for s in sets %}
+  <article class="card dupset">
+    <p class="meta">{{ 'Identical files' if s.kind == 'exact' else 'Same picture in different files (identical, resized or re-saved)' }}
+      · green = the copy FaceGroup suggests keeping (most pixels, has a date)</p>
+    <div class="copies">
+      {% for m in s.members %}
+      <div class="copy {{ 'keeper' if m.keeper }} {{ 'is-hidden' if m.hidden }}">
+        <a href="/photos/{{ m.id }}"><img src="/media/{{ m.id }}/thumb.jpg" alt="" loading="lazy"></a>
+        <div><code>{{ m.rel_path }}</code></div>
+        <div>{{ m.width }}×{{ m.height }} · {{ (m.size / 1048576)|round(2) }} MB{% if m.hidden %} · hidden{% endif %}</div>
+        <form method="post" action="/duplicates/keep">
+          <button class="link" name="keeper" value="{{ m.id }}">{{ 'Keep this, hide the others' }}</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

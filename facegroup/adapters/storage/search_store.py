@@ -26,8 +26,25 @@ class SqliteSearchStore(SqliteBase):
         self._cache_lock = threading.Lock()
 
     def candidate_items(self, f: SearchFilters) -> tuple[np.ndarray, np.ndarray]:
-        sql = ["SELECT i.id, i.media_id FROM item i JOIN media m ON m.id=i.media_id WHERE m.file_state='active'"]
+        sql = ["SELECT i.id, i.media_id FROM item i JOIN media m ON m.id=i.media_id "
+               "LEFT JOIN media_category mc ON mc.media_id=m.id WHERE m.file_state='active'"]
         args: list = []
+        if f.kind == "hidden":
+            sql.append("AND m.hidden=1")
+        elif not f.show_hidden:
+            sql.append("AND m.hidden=0")
+        if f.kind in (None, "", "hidden"):
+            pass
+        elif f.kind == "photos":
+            sql.append("AND COALESCE(mc.category, 'photo')='photo'")
+        elif f.kind:
+            sql.append("AND mc.category=?")
+            args.append(f.kind)
+        if f.favorites:
+            sql.append("AND m.favorite=1")
+        if f.min_rating:
+            sql.append("AND m.rating>=?")
+            args.append(f.min_rating)
         for pid in f.person_ids:
             sql.append("AND EXISTS (SELECT 1 FROM face f JOIN item i2 ON i2.id=f.item_id "
                        "WHERE i2.media_id=m.id AND f.person_id=?)")
@@ -126,6 +143,15 @@ class SqliteSearchStore(SqliteBase):
             "SELECT DISTINCT root_id, substr(rel_path, 1, instr(rel_path, '/') - 1) AS folder FROM media "
             "WHERE instr(rel_path, '/') > 0 ORDER BY folder LIMIT ?", (limit,)).fetchall()
         return [(r[0], r[1]) for r in rows]
+
+    def stack_map(self, media_ids: list[int]) -> dict[int, tuple[int, bool, int]]:
+        if not media_ids:
+            return {}
+        rows = self._read().execute(
+            "SELECT s.media_id, s.stack_id, s.top, (SELECT COUNT(*) FROM stack_member x WHERE x.stack_id=s.stack_id) "
+            "FROM stack_member s WHERE s.media_id IN (SELECT value FROM json_each(?))",
+            (json.dumps([int(m) for m in media_ids]),)).fetchall()
+        return {r[0]: (r[1], bool(r[2]), r[3]) for r in rows}
 
     def embedding_coverage(self, model_id: str) -> tuple[int, int]:
         c = self._read()

@@ -49,7 +49,8 @@ class IndexingService:
                  progress: Progress | None = None, should_stop: Callable[[], bool] = lambda: False,
                  suppressed: Callable[[str], np.ndarray] = lambda model_id: np.zeros((0, 512), np.float32),
                  suppress_similarity: float = 0.5,
-                 embedder_factory: Callable[[], Embedder] | None = None, embed_model_id: str | None = None) -> None:
+                 embedder_factory: Callable[[], Embedder] | None = None, embed_model_id: str | None = None,
+                 phash: Callable[[np.ndarray], int] | None = None) -> None:
         self._store = store
         self._decoder = decoder
         self._cache = cache
@@ -62,6 +63,7 @@ class IndexingService:
         self._suppressed_source = suppressed
         self._suppress_similarity = suppress_similarity
         self._suppressed = np.zeros((0, 512), np.float32)
+        self._phash = phash
         self._make_embedder = embedder_factory
         self._embed_model_id = embed_model_id if embedder_factory else None
 
@@ -101,7 +103,7 @@ class IndexingService:
         decoded = self._decoder.decode(self._store.media_path(job.media_id))
         h, w = decoded.rgb.shape[:2]
         meta = ImageMeta(decoded.width, decoded.height, decoded.taken_at, decoded.gps,
-                         decoded.content_hash, w, h)
+                         decoded.content_hash, w, h, self._phash(decoded.rgb) if self._phash else None)
         item_ids = self._store.create_items(job, meta)
         for item_id in item_ids:
             self._cache.write_working(item_id, decoded.rgb)

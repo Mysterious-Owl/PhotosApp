@@ -137,6 +137,32 @@ EmbeddingGemma 2 is about 8 points better at R@1 but about 35-40x slower here, a
 
 All 254 files of `OneDrive\Pictures` were embedded in about 17 s, including model load, with peak memory 1.03 GB. Eight queries were checked by eye against the actual content, and the top result was right for all eight: video-call screenshots, anime scenes, space wallpapers, checkout pages, the two monkey pictures, the cherry-blossom wallpaper, a specific comic, and a physics textbook page. A query takes about 50 ms after the text model has loaded; that load takes about 5 s and now happens in the background at start-up.
 
+## 7. Declutter, duplicates, bursts (batch A, 2026-10-25)
+
+All measured on public photos (Flickr30k 1K) and synthetic images, never the user's library. Script: `tests/eval/eval_categories.py`.
+
+**Categories** compare each photo's existing SigLIP 2 vector with short descriptions per category, so no new model is needed. A photo only counts as clutter when a clutter category beats "photo" by the margin.
+
+| Margin | Real photos called clutter (of 1,000) | Synthetic screenshots / documents / receipts / memes / illustrations caught |
+|---|---|---|
+| 0.03 | 3 (0.3%) | 100 / 100 / 100 / 98 / 100% |
+| **0.04 (chosen)** | **0** | 100 / 100 / 100 / 80 / 100% |
+| 0.05 | 0 | 100 / 100 / 100 / 42 / 78% |
+
+Screenshots are also caught by a rule: a "Screenshot" file name, or a PNG with no camera date at an exact screen size. Synthetic clutter is crude, so its recall is a sanity check only. Real accuracy depends on the library, and wrong guesses are fixed per photo and never overwritten.
+
+**Duplicates.** Image embeddings could not separate copies from different photos: resized and re-saved copies scored as low as 0.85, while different public photos scored as high as 0.94. A 64-bit difference hash, taken from the 320-px thumbnail, separates them cleanly:
+
+| Pair type (public photos) | Hash difference (bits) |
+|---|---|
+| Resized + recompressed copies | ≤ 7 (99% ≤ 3) |
+| Different photos | ≥ 10 |
+| 15% crops of the same scene | ≥ 15 |
+
+So a near copy is 6 bits or fewer. Flat images (blank or black) have degenerate hashes, with fewer than 8 or more than 56 bits set, so they are excluded; this was found by the tests. Exact copies come from the file hash.
+
+**Bursts:** same folder, within 15 s, and embedding similarity ≥ 0.88 (crops of one scene stayed ≥ 0.90; 99.9% of different photos are < 0.81).
+
 ## Reproduce
 
 ```powershell

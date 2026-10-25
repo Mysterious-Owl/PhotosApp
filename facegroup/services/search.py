@@ -37,6 +37,10 @@ class SearchService:
                 self._embedder = self._make_embedder()
             return self._embedder
 
+    def embed_texts(self, texts: list[str]) -> np.ndarray:
+        """Text side of the search model, shared with OrganizeService (category descriptions)."""
+        return self._query_encoder().embed_queries(texts)
+
     def warm_up(self) -> None:
         """Load the query encoder ahead of the first search (it takes a few seconds)."""
         if self._model_id:
@@ -53,7 +57,7 @@ class SearchService:
         text = text.strip()
         if not text:  # filters only: newest first
             media = self._store.newest_first(np.unique(item_media))
-            result.hits = [SearchHit(m, 0.0) for m in media[: self._limit]]
+            result.hits = self._fold_stacks([SearchHit(m, 0.0) for m in media])[: self._limit]
             return result
 
         rankings: list[list[int]] = []
@@ -71,9 +75,23 @@ class SearchService:
         keyword_rank = {m: r for r, m in enumerate(keyword, 1)}
         if keyword:
             rankings.append(keyword)
-        result.hits = [SearchHit(m, s, vector_rank.get(m), keyword_rank.get(m))
-                       for m, s in reciprocal_rank_fusion(rankings)[: self._limit]]
+        result.hits = self._fold_stacks([SearchHit(m, s, vector_rank.get(m), keyword_rank.get(m))
+                                         for m, s in reciprocal_rank_fusion(rankings)])[: self._limit]
         return result
+
+    def _fold_stacks(self, hits: list[SearchHit]) -> list[SearchHit]:
+        """Bursts of similar shots show once (the best-ranked member), with the count of the rest."""
+        stacks = self._store.stack_map([h.media_id for h in hits])
+        seen: set[int] = set()
+        out = []
+        for h in hits:
+            info = stacks.get(h.media_id)
+            if info is None:
+                out.append(h)
+            elif info[0] not in seen:
+                seen.add(info[0])
+                out.append(SearchHit(h.media_id, h.score, h.vector_rank, h.keyword_rank, info[2]))
+        return out
 
     def similar(self, media_id: int, filters: SearchFilters = SearchFilters()) -> SearchResult:
         """Photos that look like this one."""

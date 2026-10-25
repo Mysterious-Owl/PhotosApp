@@ -18,6 +18,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from facegroup.ports.search import SearchFilters
+from facegroup.services.organize import CATEGORIES
+
+KIND_LABELS = {"photo": "Photos", "screenshot": "Screenshots", "document": "Documents", "receipt": "Receipts",
+               "meme": "Memes", "illustration": "Illustrations & wallpapers"}
+KINDS = [("", "Everything"), ("photos", "Photos only (hide clutter)"),
+         *[(k, v) for k, v in KIND_LABELS.items() if k != "photo"], ("hidden", "Hidden photos")]
 
 HERE = Path(__file__).parent
 COOKIE = "facegroup_session"
@@ -234,14 +240,15 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
 
     @web.get("/search", response_class=HTMLResponse)
     def search_page(request: Request, q: str = "", person: str = "", date_from: str = "", date_to: str = "",
-                    folder: str = "", similar: int | None = None, n: int = 60):
+                    folder: str = "", similar: int | None = None, n: int = 60, kind: str = "", fav: str = ""):
         root_id, folder_path = None, None
         if ":" in folder and folder.split(":", 1)[0].isdigit():
             root_id, folder_path = int(folder.split(":", 1)[0]), folder.split(":", 1)[1]
         filters = SearchFilters(
             person_ids=tuple(_ids(person.split(","))) if person else (),
-            date_from=date_from or None, date_to=date_to or None, root_id=root_id, folder=folder_path)
-        searched = bool(q.strip() or person or date_from or date_to or folder or similar)
+            date_from=date_from or None, date_to=date_to or None, root_id=root_id, folder=folder_path,
+            kind=kind or None, favorites=bool(fav))
+        searched = bool(q.strip() or person or date_from or date_to or folder or similar or kind or fav)
         result = None
         if similar is not None:
             result = app.search.similar(similar, filters)
@@ -256,7 +263,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         return page(request, "search.html", q=q, result=result, shown=shown, more_url=more_url,
                     people=app.people.people(),
                     folders=app.search_store.top_folders(), sel_person=person, date_from=date_from,
-                    date_to=date_to, folder=folder, similar=similar, coverage=(done, total),
+                    date_to=date_to, folder=folder, similar=similar, coverage=(done, total), kind=kind, fav=fav,
+                    kinds=KINDS,
                     similar_label=app.media.media_label(similar).replace("\\", "/").split("/")[-1] if similar else "")
 
     @web.get("/photos/{mid}", response_class=HTMLResponse)
@@ -264,7 +272,43 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         info = app.search_store.photo_info(mid)
         if info is None:
             return RedirectResponse("/search", status_code=303)
-        return page(request, "photo.html", info=info, highlight=face)
+        dup_ids = app.organize_store.duplicate_set_of(mid)
+        return page(request, "photo.html", info=info, highlight=face, flags=app.organize_store.flags(mid),
+                    stack=app.organize_store.stack_of(mid), duplicates=[d for d in dup_ids if d != mid],
+                    categories=CATEGORIES)
+
+    @web.post("/photos/{mid}/flags")
+    async def photo_flags(request: Request, mid: int):
+        form = await request.form()
+        if "favorite" in form:
+            app.organize_store.set_flags([mid], favorite=form.get("favorite") == "1")
+        if "rating" in form:
+            r = str(form.get("rating"))
+            app.organize_store.set_flags([mid], rating=int(r) if r.isdigit() and 1 <= int(r) <= 5 else None)
+        if "hidden" in form:
+            app.organize_store.set_flags([mid], hidden=form.get("hidden") == "1")
+        if form.get("category") in CATEGORIES:
+            app.organize.set_category(mid, str(form.get("category")))
+        return back(request, f"/photos/{mid}")
+
+    @web.post("/photos/{mid}/stack-top")
+    def stack_top(request: Request, mid: int):
+        app.organize_store.set_stack_top(mid)
+        return back(request, f"/photos/{mid}")
+
+    @web.get("/tidy", response_class=HTMLResponse)
+    def tidy_page(request: Request):
+        return page(request, "tidy.html", summary=app.organize.summary(), sets=app.organize.duplicate_sets()[:200],
+                    labels=KIND_LABELS)
+
+    @web.post("/duplicates/keep")
+    async def keep_copy(request: Request):
+        form = await request.form()
+        keeper = int(form.get("keeper", 0)) if str(form.get("keeper", "")).isdigit() else None
+        members = app.organize_store.duplicate_set_of(keeper) if keeper else []
+        if keeper and members:
+            app.organize.hide_extra_copies(members, keeper)
+        return back(request, "/tidy")
 
     # -- library ----------------------------------------------------------------------------------------
 

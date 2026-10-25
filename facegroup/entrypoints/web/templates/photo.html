@@ -22,7 +22,36 @@
       {% if info.width %}{{ info.width }} × {{ info.height }} px · {% endif %}{{ (info.size / 1048576)|round(1) }} MB
       {% if info.gps_lat is not none %}<br>Location {{ '%.4f'|format(info.gps_lat) }}, {{ '%.4f'|format(info.gps_lon) }}{% endif %}
     </p>
+    <form method="post" action="/photos/{{ info.id }}/flags" class="row flags">
+      <button class="btn {{ 'primary' if flags.favorite }}" name="favorite" value="{{ 0 if flags.favorite else 1 }}"
+              title="Favourite">{{ '★ Favourite' if flags.favorite else '☆ Favourite' }}</button>
+      <span class="stars" aria-label="Rating">{% for r in range(1, 6) %}<button class="star {{ 'on' if flags.rating and r <= flags.rating }}"
+        name="rating" value="{{ '' if flags.rating == r else r }}" title="{{ r }} star{{ 's' if r > 1 }}">★</button>{% endfor %}</span>
+      <button class="btn" name="hidden" value="{{ 0 if flags.hidden else 1 }}">{{ 'Unhide' if flags.hidden else 'Hide' }}</button>
+    </form>
+    <form method="post" action="/photos/{{ info.id }}/flags" class="row">
+      <label class="meta">Kind
+        <select name="category" onchange="this.form.requestSubmit()">
+          {% for c in categories %}<option value="{{ c }}" {{ 'selected' if flags.category == c }}>{{ c|capitalize }}</option>{% endfor %}
+        </select></label>
+      {% if flags.source != 'user' and flags.category != 'photo' %}<span class="meta">(guessed)</span>{% endif %}
+    </form>
+    {% if flags.hidden %}<p class="notice">Hidden in FaceGroup. The file is untouched.</p>{% endif %}
     <p><a class="btn" href="/search?similar={{ info.id }}">Find similar photos</a></p>
+    {% if duplicates %}
+    <h2>Copies of this photo</h2>
+    <div class="row">{% for d in duplicates %}<a href="/photos/{{ d }}"><img class="mini" src="/media/{{ d }}/thumb.jpg" alt=""></a>{% endfor %}</div>
+    <p><a class="link" href="/tidy#dup">Review duplicates</a></p>
+    {% endif %}
+    {% if stack|length > 1 %}
+    <h2>Burst: {{ stack|length }} similar shots</h2>
+    <div class="row">{% for m, top in stack %}
+      <a href="/photos/{{ m }}" class="{{ 'current' if m == info.id }}"><img class="mini {{ 'top' if top }}" src="/media/{{ m }}/thumb.jpg" alt=""></a>
+    {% endfor %}</div>
+    {% if not (stack|selectattr(1)|map(attribute=0)|list == [info.id]) %}
+    <form method="post" action="/photos/{{ info.id }}/stack-top"><button class="btn">Make this the top pick</button></form>
+    {% endif %}
+    {% endif %}
     {% if info.faces %}
     <h2>In this photo</h2>
     <div class="faces-in">

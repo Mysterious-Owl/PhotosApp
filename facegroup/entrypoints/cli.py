@@ -88,6 +88,9 @@ def scan(
                 for e in report.errors[:5]:
                     typer.echo(f"    ! {e}")
             if not stop.is_set():
+                o = a.organize.refresh()
+                typer.echo(f"  organise: {o['categorised']} categorised, {o['duplicate_sets']} duplicate set(s), "
+                           f"{o['stacks']} burst stack(s)")
                 changed, groups = a.people.refresh()
                 typer.echo(f"  people: {changed} face(s) matched to known people, {groups} suggested group(s)")
         proc = psutil.Process()

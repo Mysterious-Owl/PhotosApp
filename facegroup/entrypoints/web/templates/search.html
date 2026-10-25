@@ -19,6 +19,12 @@
       {% for root_id, f in folders %}<option value="{{ root_id }}:{{ f }}" {{ 'selected' if folder == root_id|string ~ ':' ~ f }}>{{ f }}</option>{% endfor %}
     </select>
   </label>
+  <label>Kind
+    <select name="kind">
+      {% for value, text in kinds %}<option value="{{ value }}" {{ 'selected' if kind == value }}>{{ text }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="inline-check"><input type="checkbox" name="fav" value="1" {{ 'checked' if fav }}> Favourites</label>
   <button class="btn primary" type="submit">Search</button>
   {% if result %}<a class="link" href="/search">Clear</a>{% endif %}
 </form>
@@ -42,6 +48,7 @@
   <a href="/photos/{{ h.media_id }}">
     <img src="/media/{{ h.media_id }}/thumb.jpg" alt="" loading="lazy">
     {% if h.keyword_rank and not h.vector_rank %}<span class="why">name match</span>{% endif %}
+    {% if h.stack_size > 1 %}<span class="stackn" title="{{ h.stack_size }} similar shots">+{{ h.stack_size - 1 }}</span>{% endif %}
   </a>
   {% endfor %}
 </div>
