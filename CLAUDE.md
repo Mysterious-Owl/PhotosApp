@@ -5,7 +5,7 @@
 The user's photo library, and everything derived from it, is private. An assistant that can read images must not open it.
 
 **Never:**
-- Open, view or describe the user's photos, or any image derived from them: face crops, thumbnails, working images, contact sheets, or screenshots of the app showing their library. This applies to their `Pictures`/`OneDrive` folders, `data\app\cache` and `data\app\facegroup.db` in this repo, and `data\eval\real` (older copies may exist under `%LOCALAPPDATA%\FaceGroup` and `%LOCALAPPDATA%\FaceGroup-eval`).
+- Open, view or describe the user's photos, or any image derived from them: face crops, thumbnails, working images, contact sheets, or screenshots of the app showing their library. This applies to their `Pictures`/`OneDrive` folders, `data\app\cache` and `data\app\facegroup.db` in this repo, `data\eval\real`, any `FaceGroup removed`, `… converted` or `… clean` folder the file tools create, (older copies may exist under `%LOCALAPPDATA%\FaceGroup` and `%LOCALAPPDATA%\FaceGroup-eval`).
 - Generate contact sheets, crops or screenshots of the user's photos "to check quality".
 - Print or read personal details from the library: people's names, file and folder names, EXIF dates, GPS locations, or text found in images (OCR). Debug output stays aggregate.
 

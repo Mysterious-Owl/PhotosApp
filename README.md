@@ -1,6 +1,6 @@
 # FaceGroup
 
-Local-first face grouping and search for your own photo library. Everything runs on your computer and the library is never modified. Personal, non-commercial use: the default face model (InsightFace `buffalo_l`) is licensed for non-commercial use only.
+Local-first face grouping and search for your own photo library, plus file tools (duplicate files, HEIC conversion, metadata removal). Everything runs on your computer. Personal, non-commercial use: the default face model (InsightFace `buffalo_l`) is licensed for non-commercial use only.
 
 - Plan: [PLAN.md](PLAN.md)
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
@@ -8,7 +8,9 @@ Local-first face grouping and search for your own photo library. Everything runs
 - Accuracy: [docs/EVALUATION.md](docs/EVALUATION.md)
 - Similar apps and feature ideas: [docs/FEATURE_RESEARCH.md](docs/FEATURE_RESEARCH.md)
 
-**Status:** indexing, People, search, text in images, Tidy (categories, duplicates, bursts) and browsing (timeline, On this day, Events) are done. Video and captions are not built yet.
+**Status:** indexing, People, search, text in images, Tidy (categories, duplicates, bursts), browsing (timeline, On this day, Events) and the file tools (Duplicate files, Convert HEIC, Remove metadata) are done. Video and captions are not built yet.
+
+Your photos are never changed, with one exception that you start yourself: **Duplicate files** moves extra copies into a holding folder when you confirm, and can put them back.
 
 ## Quick start
 
@@ -38,7 +40,16 @@ python -m uv run facegroup download-models   # ~275 MB, once
 - **Text in images:** words in screenshots, receipts and documents are searchable ("order shipped", an invoice number). Type people's names in search ("Mom and Dad beach"); if a name is also a normal word, use "search the words instead".
 - **Check** (top bar): a few quick yes/no questions FaceGroup is least sure about ("Is this group Mom?", "Are Face 7 and Face 12 the same person?"). It measures how often its automatic matches are right, from your own answers and confirmed faces, and tunes its strictness to stay at 98% or better. It becomes more careful quickly, and looser only with plenty of evidence. Two faces in one photo are always treated as two different people.
 - **Search** (box at the top): describe the photo ("beach at sunset", "birthday cake"), and narrow by person, date or folder. Words in file and folder names match too. On a photo, **Find similar photos**.
-- The link the app opens only works on this computer, for this session.
+- The link the app opens only works on this computer, for this session. FaceGroup opens in its own Edge window when Edge is installed. Theme (System, Light, Dark) is at the bottom of the sidebar.
+
+**File tools** (any folder or drive, not only the library). Every folder box has **Browse…**, which opens the Windows folder picker; you can also type or paste a path.
+
+- **Duplicate files** (Clean up): finds byte-identical files (photos and videos, or all files) across folders and drives. Under **Folder pairs**, choose which folder's copies to keep; that choice applies to every duplicate between the two folders. Copies inside one folder keep the plain name over "IMG_1 (1).jpg", and PNG over HEIC. A HEIC photo that also has a PNG made from it (same name, checked to be the same picture) shows as **HEIC + PNG**: the PNG is kept, and the HEIC moves only if you tick that option. Anything else is only a suggestion until you approve it. **Move** puts extra copies in `FaceGroup removed` at the top of the same drive, keeping their folder structure; **Moved** has **Restore**. Nothing is deleted, and you empty `FaceGroup removed` yourself. It also lists empty folders. OneDrive cloud-only files are never downloaded.
+- **Convert HEIC** (Tools): iPhone HEIC/HEIF photos to PNG or JPEG copies in "`<folder> converted`", keeping the date, camera and location. It can also copy everything else, so the new folder is complete.
+- **Remove metadata** (Tools): **Check only** counts what the pictures reveal (location, camera, date). **Make clean copies** writes them to "`<folder> clean`" without EXIF, GPS, XMP, IPTC or comments, turned upright first. It keeps the colour profile, and the date taken if you tick it.
+- **Right-click menu:** `python -m uv run facegroup context-menu install` adds a FaceGroup submenu to folders and drives in Explorer (current user only; on Windows 11 it is under **Show more options**). It opens the tool with that folder filled in, inside the running FaceGroup if it is already open. Remove it with `facegroup context-menu remove`.
+
+Convert HEIC and Remove metadata replace the old `Apple image convertor` and `photo metadata clean` scripts, and Duplicate files replaces `photo dedup`.
 
 **Command line:**
 
@@ -48,6 +59,9 @@ python -m uv run facegroup scan               # rescan every folder: only new/ch
 python -m uv run facegroup status             # counts, plus files that failed and why
 python -m uv run facegroup people             # people and suggested groups, as text
 python -m uv run facegroup retry              # re-queue failed files
+python -m uv run facegroup convert "D:\iPhone" --jpg --all   # HEIC to JPEG copies (works while the app is open)
+python -m uv run facegroup metadata "D:\To share"            # report; add --clean for clean copies
+python -m uv run facegroup ui --page duplicates --folder "D:\"   # open a tool with a folder filled in
 ```
 
 - **Ctrl+C** stops after the current batch. Indexing also resumes safely after a crash or power loss.
@@ -65,6 +79,7 @@ Everything lives in `data\app` in the project folder (git-ignored, and refused i
 | `models\buffalo_l`, `models\siglip2-base` | Face model and search model files |
 | `logs\facegroup.log` | Rotating log |
 | `config.toml` | Optional settings (see `facegroup/config.py`) |
+| `session.json` | Port and login token of the running app, so a second launch (e.g. the right-click menu) opens there; removed on exit |
 
 Example `config.toml`:
 

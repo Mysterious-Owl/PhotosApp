@@ -241,6 +241,7 @@ How to reduce it:
 | M3 Visual search ✅ (SigLIP 2) | Image-text fingerprints, search bar, filters (person, date, folder) | "beach sunset" returns relevant images on the test set |
 | M4 Text (OCR ✅, captions open) | OCR, optional captions, text fingerprints, combined search | Search for words that appear in images (receipts, signs) |
 | Batches A, B, D ✅ (2026-10-25) | Tidy (categories, duplicates, bursts), text in images and name search, Photos timeline, On this day, Events, saved searches. See [docs/FEATURE_RESEARCH.md](docs/FEATURE_RESEARCH.md) | — |
+| M6 Tools ✅ (2026-11-01) | Duplicate files, Convert HEIC, Remove metadata; sidebar UI; right-click menu. See "M6 Tools" below | Byte-identical duplicates moved and restored, never deleted; originals untouched by convert and clean |
 | M5 Video and polish | Video frame sampling + face tracks, folder watching, installer, evaluation report | One-click Windows install on a clean machine |
 
 ### M1 results (2026-10-17): done criteria met
@@ -277,6 +278,25 @@ The scale benchmark above measures robustness, not accuracy. Accuracy is in [doc
 4. **Project licence (only if published later).** Options: MIT, Apache-2.0 (adds a patent grant), or AGPL-3.0, which keeps hosted forks open (Immich uses AGPL).
 5. **Library size to aim for.** Thousands vs. hundreds of thousands of items. This decides between sqlite-vec and LanceDB, and between HDBSCAN and Chinese Whispers for suggestions.
 6. **Captions in v1?** They are 1–3 seconds per image on the processor. They could ship off by default.
+
+### M6 Tools: three scripts merged in (decided 2026-11-01)
+
+Three separate scripts become part of FaceGroup, and the UI moves to a sidebar inspired by `Q:\Scripts\data dedup`:
+
+| Was | Becomes | What it does |
+|---|---|---|
+| `Apple image convertor` | **Convert HEIC** (Tools) | HEIC/HEIF to PNG (lossless) or JPEG, into a new sibling folder; optionally copies other files; keeps the date taken |
+| `photo metadata clean` | **Remove metadata** (Tools) | "Check" reports what metadata is present (counts only); "Clean" writes copies without EXIF, GPS, XMP or IPTC into a new folder, rotated correctly, colour profile kept by default |
+| `photo dedup` | **Duplicate files** (Clean up) | Exact duplicates (size, then a quick hash, then a full hash) across any folders and file types; **folder rules** ("copies in A and B: keep A") decided once and applied everywhere; empty folders |
+
+Decisions:
+
+- **Tools work on any folder you pick**, not only library folders. Explorer's right-click menu gets a FaceGroup submenu (`facegroup context-menu install`), which opens the right page with the folder filled in. A second launch hands off to the running app through `data\app\session.json`.
+- **Originals are never changed by Convert or Remove metadata**: they write new files into a new folder, via `.part` files.
+- **Duplicate cleanup moves, never deletes.** After you review and confirm, extra copies move into `<drive>:\FaceGroup removed\<original path>`, on the same drive so the move is instant. Every move is recorded, and **Restore** puts files back. Emptying that folder is up to you. This is the only feature that changes your folders, and only on confirmation.
+- **Online-only OneDrive files are never hashed** (that would download them); they are listed as "not checked".
+- Tool jobs run one at a time in the background with progress and Stop. They don't use the photo index and don't block indexing.
+- Tidy's "Copies" (similar photos inside the library, hidden in the app only) stays as it is; Duplicate files is the byte-identical, any-folder, file-moving tool.
 
 ---
 

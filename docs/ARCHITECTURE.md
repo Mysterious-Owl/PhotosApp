@@ -38,7 +38,7 @@ flowchart LR
     hub -. first-run download .-> models
 ```
 
-- **The library is never written to.**
+- **The library is never written to**, with one exception the user starts: Duplicate files moves confirmed extra copies into a holding folder on the same drive (§15), logged and restorable. Convert and Remove metadata only read originals.
 - **App data must never be in a synced folder.** OneDrive can corrupt or duplicate a SQLite database and its WAL file. The app refuses to open a database under a OneDrive path.
 - **OneDrive "online-only" files are skipped by default** (§3, rule 5).
 - After the models are downloaded, the app works fully offline.
@@ -490,15 +490,18 @@ As built (2026-11-01):
 
 ```
 facegroup/
-  domain/        entities, policies, people, search, organize, browse   # pure, imports nothing from other packages
+  domain/        entities, policies, people, search, organize, browse, files   # pure, imports nothing from other packages
   ports/         face, media, people, search, store                      # typing.Protocol, domain types only
-  services/      library, indexing, media, people, search, organize, browse
+  services/      library, indexing, media, people, search, organize, browse, tools
   adapters/
     models/      buffalo_onnx (+ norm_crop alignment), siglip2_onnx, ocr (RapidOCR), download
-    storage/     db, writer, sqlite_store, people_store, search_store, organize_store, migrations/0001-0007
+    storage/     db, writer, sqlite_store, people_store, search_store, organize_store, tools_store, migrations/0001-0010
     media/       decoder (Pillow, pillow-heif), files (OneDrive placeholders), cache (thumbs, crops), phash
+    tools/       walk (any folder, hashing), images (HEIC convert, metadata, same-picture check),
+                 mover (holding folder), picker (Windows folder dialog)
     clustering.py, instance_lock.py
-  entrypoints/   cli.py, scheduler.py, web/ (server.py, templates/, static/ with HTMX)
+  entrypoints/   cli.py, scheduler.py, launch.py (window, hand-off), context_menu.py,
+                 web/ (server.py, tools_routes.py, templates/, static/ with HTMX)
   bootstrap.py   config -> adapters -> services
   config.py      typed settings (pydantic-settings, data/app/config.toml)
 data/            git-ignored: app/ (database, cache, models, logs), eval/, bench/
@@ -605,3 +608,18 @@ A code review of the whole package found and fixed:
 Known and left as is: `services/media.py` imports `cv2` and the cache adapter directly (a layering exception for image encoding); FTS5 `media_id`/`item_id` are UNINDEXED, so deleting many photos scans the text index (fine below 50k; rebuild keyed on rowid if it gets slow).
 
 - **"Forget person" deletes and suppresses only confirmed faces** (decided 2026-11-01). Automatic matches become unassigned and are re-voted, because a wrong automatic match deleted and suppressed would hide another person's look-alikes for good.
+
+## 15. File tools (M6, 2026-11-01)
+
+Three standalone scripts merged in: `Apple image convertor` → **Convert HEIC**, `photo metadata clean` → **Remove metadata**, `photo dedup` → **Duplicate files**. The UI moved to a sidebar (Library, Clean up, Tools) with the palette and light/dark switch of Storage Explorer (`Q:\Scripts\data dedup`). Decisions are in [PLAN.md](../PLAN.md#m6-tools-three-scripts-merged-in-decided-2026-11-01).
+
+- **Scope:** the tools work on any folder, by absolute path. They don't use the photo index, and their jobs run on their own thread (`ToolRunner`, one job at a time, with progress and Stop), so they never block indexing. `convert` and `metadata` also run from the command line without the database, even while the app is open.
+- **Duplicate files:**
+  - **Finding:** size first (free), then a quick hash of the first and last 64 KB, then a full BLAKE2b hash. Each step only reads files that are still candidates. Online-only OneDrive files are counted, never read. Junctions, system folders and `FaceGroup removed` are not walked.
+  - **Deciding** (`domain/files.decide`): your choice for a set (by content hash, so it survives a rescan) → pairwise folder preferences (a folder must be preferred over every other folder in the set) → copies inside one folder (plain name over "(1)" / "- Copy", then oldest) → otherwise a suggestion, which is only acted on if you tick "Also follow the suggestions".
+  - **Moving** (`adapters/tools/mover`): the only code that changes the user's folders. Each extra copy is renamed (never copied or deleted) to `<drive>\FaceGroup removed\<path>` on its own drive, never overwriting anything. Just before each move, the copy being kept and the copy being moved are both checked again (same size and date as at the scan). Each move is logged in `removed_file` immediately, so Restore works after a crash. Restore refuses to overwrite and tidies away the holding folders it empties. Empty folders are removed with `rmdir` only (which fails on a non-empty folder), and are logged too.
+- **Convert / Remove metadata:** originals are only opened for reading. Output goes to a new folder (`… converted`, `… clean`) through `.part` files. Conversion keeps EXIF and the colour profile. Cleaning rebuilds the image from its pixels alone (after turning it upright), so no EXIF, XMP, IPTC or text can carry over. The check reports only whether each kind of metadata is present, never its values.
+- **Window and hand-off** (`entrypoints/launch.py`): the UI opens as an Edge app window. The running instance writes `data\app\session.json` (port and token). A second `facegroup ui --page … --folder …`, for example from the right-click menu (`context_menu.py`, HKCU only), opens that page in the running app instead of failing on the instance lock. `/login?next=` accepts only local paths.
+- **Layering exception:** `services/tools.py` calls the tool adapters directly (as `services/media.py` does for image encoding). They are thin file operations with no alternative implementations, so a port would add indirection without benefit.
+- **HEIC + PNG sets** (added 2026-11-01): a HEIC photo and a PNG with the same name (same folder or "`… converted`" tried first) are compared by dimensions (from the headers) and 64×64 pixels; if they are the same picture they form a set with digest `heic-png:<PNG quick hash>`. The PNG is kept (lossless, opens everywhere), and the HEIC moves only when "Also move the HEIC originals" is ticked. Files already in a byte-identical set are left to that set. Among otherwise equal copies, PNG is also ranked above HEIC.
+- **Browse…:** the browser can't return a full folder path, so `POST /tools/pick-folder` shows the Windows folder dialog on the server (the same PC), in a short-lived child process (`adapters/tools/picker.py`, Tk), and returns the path. `app.js` adds the button to any field marked `data-pick`.
