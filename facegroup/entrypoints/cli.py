@@ -159,21 +159,33 @@ def ui(
     port: int = typer.Option(None, help="Port on 127.0.0.1 (default from config: 8765)."),
     scan_on_start: bool = typer.Option(True, "--scan/--no-scan", help="Look for new photos when it starts."),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the browser automatically."),
+    page: str = typer.Option("photos", help="Page to open: photos, people, duplicates, convert, metadata."),
+    folder: str = typer.Option(None, help="Folder to fill in on a tool page (used by the right-click menu)."),
 ) -> None:
-    """Open the People screen in your browser. Ctrl+C to quit."""
+    """Open FaceGroup in its own window. Ctrl+C to quit. If it is already running, opens the page there."""
     import secrets
-    import webbrowser
 
     import uvicorn
 
+    from facegroup.adapters.instance_lock import AlreadyRunningError
+    from facegroup.entrypoints import launch
     from facegroup.entrypoints.scheduler import Scheduler
     from facegroup.entrypoints.web.server import create_app
 
     settings = load_settings()
     setup_logging(settings)
     port = port or settings.port
+    next_path = launch.page_url(page, folder)
     scheduler = Scheduler()
-    a = build(settings, progress=scheduler.progress, should_stop=scheduler.should_stop)
+    try:
+        a = build(settings, progress=scheduler.progress, should_stop=scheduler.should_stop)
+    except AlreadyRunningError:
+        session = launch.read_session(settings.data_dir)
+        if session is None:
+            raise
+        launch.open_window(launch.login_url(session["port"], session["token"], next_path))
+        typer.echo("FaceGroup is already running: opened it there.")
+        return
     try:
         a.indexing.recover()
         scheduler.attach(a)
@@ -182,15 +194,89 @@ def ui(
         if scan_on_start and a.library.roots():
             scheduler.request_scan()
         token = secrets.token_urlsafe(32)
-        url = f"http://127.0.0.1:{port}/login?t={token}"
+        url = launch.login_url(port, token, next_path)
         web = create_app(a, scheduler, token, port)
+        launch.write_session(settings.data_dir, port, token)
         typer.echo(f"FaceGroup is running. Open this link (it works only on this computer, this session):\n  {url}")
         if open_browser:
-            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+            threading.Timer(1.0, lambda: launch.open_window(url)).start()
         uvicorn.run(web, host="127.0.0.1", port=port, log_level="warning")
     finally:
+        launch.clear_session(settings.data_dir)
         scheduler.stop()
         a.close()
+
+
+def _run_tool(title: str, fn) -> dict:
+    """Run a file tool in this console with a progress line. They need no database, so FaceGroup may be open."""
+    from facegroup.services.tools import ToolRunner
+
+    runner = ToolRunner()
+    signal.signal(signal.SIGINT, lambda *_: runner.stop())
+    runner.start("cli", title, fn)
+    while runner.job.running:
+        j = runner.job
+        sys.stdout.write(f"\r  {j.message[:60]:<60} {j.done:>7}/{j.total:<7}")
+        sys.stdout.flush()
+        time.sleep(0.3)
+    typer.echo(f"\n{runner.job.message}")
+    for e in (runner.job.result.get("errors") or [])[:20]:
+        typer.echo(f"  ! {e}")
+    return runner.job.result
+
+
+@app.command()
+def convert(
+    folder: Path = typer.Argument(..., exists=True, file_okay=False, help="Folder with HEIC/HEIF photos."),
+    jpg: bool = typer.Option(False, "--jpg", help="JPEG instead of PNG (much smaller)."),
+    copy_all: bool = typer.Option(False, "--all", help="Also copy every other file, so the new folder is complete."),
+    recurse: bool = typer.Option(False, "--subfolders", help="Include subfolders."),
+    overwrite: bool = typer.Option(False, help="Replace files already in the output folder."),
+    output: Path = typer.Option(None, help="Output folder (default: '<folder> converted' next to it)."),
+) -> None:
+    """Convert HEIC/HEIF photos to PNG or JPEG copies. Originals are not changed."""
+    from facegroup.domain.files import sibling_folder
+    from facegroup.services.tools import ConvertOptions, run_convert
+
+    opts = ConvertOptions(folder.resolve(), output or Path(sibling_folder(str(folder.resolve()), "converted")),
+                          "jpg" if jpg else "png", copy_all, overwrite, recurse)
+    _run_tool("Convert HEIC", lambda r: run_convert(opts, r))
+
+
+@app.command()
+def metadata(
+    folder: Path = typer.Argument(..., exists=True, file_okay=False, help="Folder with pictures."),
+    clean: bool = typer.Option(False, "--clean", help="Write clean copies (default: only report what is there)."),
+    keep_date: bool = typer.Option(False, help="Keep the date taken in clean copies."),
+    output: Path = typer.Option(None, help="Output folder for --clean (default: '<folder> clean' next to it)."),
+) -> None:
+    """Report the metadata in pictures (location, camera, date), or write copies without it."""
+    from facegroup.domain.files import sibling_folder
+    from facegroup.services.tools import MetadataOptions, run_metadata_check, run_metadata_clean
+
+    src = folder.resolve()
+    if clean:
+        opts = MetadataOptions(src, output or Path(sibling_folder(str(src), "clean")), keep_date=keep_date)
+        _run_tool("Remove metadata", lambda r: run_metadata_clean(opts, r))
+    else:
+        _run_tool("Check metadata", lambda r: run_metadata_check(src, True, r))
+
+
+@app.command("context-menu")
+def context_menu(action: str = typer.Argument("install", help="install or remove")) -> None:
+    """Add (or remove) a FaceGroup submenu to Explorer's right-click menu, for the current user only."""
+    from facegroup.entrypoints import context_menu as menu
+
+    if action == "remove":
+        menu.remove()
+        typer.echo("Removed the FaceGroup right-click menu.")
+        return
+    launcher = Path(__file__).resolve().parents[2] / "FaceGroup.cmd"
+    if not launcher.exists():
+        raise typer.BadParameter(f"{launcher} not found; run this from the FaceGroup project folder.")
+    n = menu.install(launcher)
+    typer.echo(f"Added {n} right-click items (Windows 11: under 'Show more options'). Remove with: "
+               "facegroup context-menu remove")
 
 
 @app.command("download-models")
