@@ -18,6 +18,7 @@ from facegroup.adapters.storage.organize_store import SqliteOrganizeStore
 from facegroup.adapters.storage.people_store import SqlitePeopleStore
 from facegroup.adapters.storage.search_store import SqliteSearchStore
 from facegroup.adapters.storage.sqlite_store import SqliteStore
+from facegroup.adapters.storage.tools_store import SqliteToolsStore
 from facegroup.adapters.storage.writer import DbWriter
 from facegroup.config import Settings
 from facegroup.domain.people import AssignPolicy
@@ -30,6 +31,7 @@ from facegroup.services.people import LearnPolicy, PeopleService, SuggestPolicy
 from facegroup.services.browse import BrowseService
 from facegroup.services.organize import OrganizeService
 from facegroup.services.search import SearchService
+from facegroup.services.tools import DuplicatesService, ToolRunner
 from facegroup.ports.search import Embedder
 
 
@@ -49,6 +51,9 @@ class App:
     organize: OrganizeService
     organize_store: SqliteOrganizeStore
     browse: BrowseService
+    tools_store: SqliteToolsStore
+    duplicates: DuplicatesService
+    tools: ToolRunner
     _writer: DbWriter
     _lock: InstanceLock
 
@@ -58,6 +63,7 @@ class App:
         self.people_store.close()
         self.search_store.close()
         self.organize_store.close()
+        self.tools_store.close()
         self._writer.close()
         self._lock.release()
 
@@ -188,5 +194,7 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
         return to_signed(dhash(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))) if bgr is not None else None
 
     organize = OrganizeService(organize_store, search.embed_texts, embed_model_id or "", thumbnail_hash)
+    tools_store = SqliteToolsStore(settings.db_path, writer)
     return App(settings, store, people_store, cache, decoder, library, indexing, people, media, search,
-               search_store, organize, organize_store, BrowseService(search_store), writer, lock)
+               search_store, organize, organize_store, BrowseService(search_store), tools_store,
+               DuplicatesService(tools_store), ToolRunner(), writer, lock)
