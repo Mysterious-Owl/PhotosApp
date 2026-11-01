@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Convert HEIC{% endblock %}
+{% block main %}
+<div class="page-head"><h1>Convert HEIC</h1></div>
+<p class="lede">Turns iPhone HEIC/HEIF photos into PNG or JPEG copies in a new folder, keeping the date taken, camera
+  details and location. The originals are only read, never changed.</p>
+
+{% include "_tool_common.html" %}
+
+<form method="post" action="/tools/convert" class="card form-grid">
+  <label for="folder">Folder</label>
+  <input type="text" id="folder" name="folder" list="places" required value="{{ folder }}" data-pick="Choose the folder with HEIC photos"
+         placeholder="D:\Photos\iPhone (Browse…, paste a path, or right-click a folder in Explorer)">
+
+  <label>Convert to</label>
+  <div class="radios">
+    <label><input type="radio" name="fmt" value="png" checked> <span>PNG <small>lossless, large files</small></span></label>
+    <label><input type="radio" name="fmt" value="jpg"> <span>JPEG <small>high quality, about a tenth of the size</small></span></label>
+  </div>
+
+  <label>Options</label>
+  <div class="checks">
+    <label><input type="checkbox" name="copy_others" value="1"> <span>Copy everything else too <small>(videos, JPEGs…), so the new folder is complete</small></span></label>
+    <label><input type="checkbox" name="recurse" value="1"> <span>Include subfolders</span></label>
+    <label><input type="checkbox" name="overwrite" value="1"> <span>Replace files already in the new folder <small>(otherwise they are skipped)</small></span></label>
+  </div>
+
+  <label for="output">Save to</label>
+  <input type="text" id="output" name="output" data-pick="Choose where to save the converted copies" placeholder="Leave empty: a new folder next to it, “… converted”">
+
+  <div class="wide row">
+    <button type="submit" class="btn primary big"{% if other_job or (job and job.running) %} disabled{% endif %}>Convert</button>
+  </div>
+</form>
+{% endblock %}

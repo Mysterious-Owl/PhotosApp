@@ -1,0 +1,13 @@
+<table class="list">
+  <thead><tr><th>Original place</th><th>Now in</th><th class="num">Size</th><th></th></tr></thead>
+  <tbody>
+  {% for f in files %}
+  <tr>
+    <td class="path">{{ f.original }}</td>
+    <td class="path">{{ f.holding or "(empty folder, removed)" }}</td>
+    <td class="num">{{ f.size | size if f.holding else "" }}</td>
+    <td>{% if f.restored_at %}<span class="badge ok">restored</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>

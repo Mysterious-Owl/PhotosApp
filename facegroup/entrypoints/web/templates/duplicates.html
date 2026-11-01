@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Duplicate files{% endblock %}
+{% macro reason_badge(r) -%}
+  {%- if r == "choice" %}<span class="badge ok">your choice</span>
+  {%- elif r == "rule" %}<span class="badge ok">folder rule</span>
+  {%- elif r == "same_folder" %}<span class="badge ok">copy in the same folder</span>
+  {%- elif r == "converted" %}<span class="badge warn">HEIC with a PNG copy: keep the PNG?</span>
+  {%- else %}<span class="badge warn">suggestion: needs your OK</span>{% endif -%}
+{%- endmacro %}
+{% macro reveal(path) -%}
+  <form hx-post="/files/reveal" hx-swap="none" class="inline"><input type="hidden" name="path" value="{{ path }}">
+    <button type="submit" class="link" title="Open the folder in Explorer with this file selected">Show</button></form>
+{%- endmacro %}
+{% block main %}
+<div class="page-head"><h1>Duplicate files</h1></div>
+<p class="lede">Finds byte-for-byte identical files in any folders or drives: photos, videos, or everything. Decide once
+  per pair of folders which copy to keep, and that applies to every duplicate between them. Extra copies are
+  <b>moved</b>, never deleted: into a “{{ HOLDING_FOLDER }}” folder on the same drive, and Restore puts them back.</p>
+
+{% include "_tool_common.html" %}
+
+{% set s = summary %}
+<nav class="tabs" aria-label="Duplicate files">
+  {% for key, label, n in [("scan", "Scan", None), ("overview", "Overview", None),
+                           ("pairs", "Folder pairs", None), ("groups", "Sets", s.groups if s else None),
+                           ("empty", "Empty folders", s.empty if s else None), ("removed", "Moved", None)] %}
+    {% if key in ("scan", "removed") or s %}
+    <a href="/files/duplicates?view={{ key }}"{% if view == key %} class="active"{% endif %}>{{ label }}{% if n %}<span class="n">{{ "{:,}".format(n) }}</span>{% endif %}</a>
+    {% endif %}
+  {% endfor %}
+</nav>
+
+{% if view == "scan" %}
+<form method="post" action="/files/duplicates/scan" class="card form-grid">
+  <label for="folders">Folders</label>
+  <div>
+    <textarea id="folders" name="folders" rows="4" required data-pick="Add a folder to look in" data-pick-append
+              placeholder="One folder or drive per line, e.g.&#10;D:\&#10;Q:\Photos">{{ folder or ("\n".join(s.scan.roots) if s else "") }}</textarea>
+    <div class="row hint">Add:
+      {% for p in places %}<button type="button" class="chip link" onclick="const t=document.getElementById('folders'); t.value=(t.value.trim()? t.value.trim()+'\n':'')+this.dataset.p" data-p="{{ p }}">{{ p }}</button>{% endfor %}
+    </div>
+  </div>
+  <label>Look at</label>
+  <div class="radios">
+    <label><input type="radio" name="media_only" value="1" checked> <span>Photos and videos</span></label>
+    <label><input type="radio" name="media_only" value=""> <span>All files <small>(documents, music, installers…)</small></span></label>
+  </div>
+  <label for="min_kb">Ignore files under</label>
+  <div class="row"><input type="number" id="min_kb" name="min_kb" value="1" min="0" style="width:90px"> KB</div>
+  <div class="wide row">
+    <button type="submit" class="btn primary big"{% if other_job or (job and job.running) %} disabled{% endif %}>Find duplicates</button>
+    <span class="hint">Only files of the same size are read, and only until they differ. OneDrive files that are
+      only in the cloud are never downloaded; they are counted as “not checked”.</span>
+  </div>
+</form>
+{% if s %}<p class="meta">Last scan finished {{ s.scan.finished_at[:16].replace("T", " ") }} UTC:
+  {{ "{:,}".format(s.scan.files) }} files, {{ s.scan.bytes | size }}.</p>{% endif %}
+
+{% elif view == "overview" and s %}
+<div class="stats">
+  <div class="stat"><b>{{ "{:,}".format(s.groups) }}</b><span>sets of identical files</span></div>
+  <div class="stat good"><b>{{ s.ready_bytes | size }}</b><span>{{ "{:,}".format(s.ready_files) }} extra cop{{ "y" if s.ready_files == 1 else "ies" }} ready to move</span></div>
+  <div class="stat warn"><b>{{ "{:,}".format(s.suggested) }}</b><span>set{{ "s" if s.suggested != 1 }} need{{ "s" if s.suggested == 1 }} a decision ({{ s.suggested_bytes | size }})</span></div>
+  {% if s.converted %}<div class="stat warn"><b>{{ "{:,}".format(s.converted) }}</b><span>HEIC photos that also have a PNG copy ({{ s.converted_bytes | size }})</span></div>{% endif %}
+  <div class="stat"><b>{{ "{:,}".format(s.scan.cloud_only) }}</b><span>cloud-only files, not checked</span></div>
+  <div class="stat"><b>{{ "{:,}".format(s.empty) }}</b><span>empty folders</span></div>
+</div>
+{% if s.suggested %}
+<p class="card callout">Fastest way through: open <a href="/files/duplicates?view=pairs">Folder pairs</a> and pick which
+  folder to keep for the biggest pairs. Each choice settles every duplicate between those two folders.</p>
+{% endif %}
+{% if s.ready or s.suggested or s.converted %}
+<form method="post" action="/files/duplicates/remove" class="card confirm" style="margin-top:14px">
+  <h2 style="margin-top:0">Move the extra copies</h2>
+  <p>Keeps one copy of each set and moves the others into “{{ HOLDING_FOLDER }}” on the same drive, keeping their
+    folder structure. Nothing is deleted; <a href="/files/duplicates?view=removed">Moved</a> has Restore. Each file is
+    checked again just before it moves, and is left alone if it changed since the scan.</p>
+  <div class="checks">
+    <label><input type="checkbox" name="include_suggested" value="1"> <span>Also follow the
+      {{ "{:,}".format(s.suggested) }} suggestions <small>(review them in <a href="/files/duplicates?view=groups&show=suggested">Sets</a> first)</small></span></label>
+    {% if s.converted %}
+    <label><input type="checkbox" name="include_converted" value="1"> <span>Also move the
+      {{ "{:,}".format(s.converted) }} HEIC originals that have a PNG copy <small>(the PNG is kept: lossless, opens
+      everywhere; <a href="/files/duplicates?view=groups&show=converted">see them</a>)</small></span></label>
+    {% endif %}
+    <label><input type="checkbox" name="confirm" value="yes" required> <span>I have looked through what will be kept</span></label>
+  </div>
+  <p><button type="submit" class="btn primary big"{% if other_job or (job and job.running) %} disabled{% endif %}>
+    Move {{ "{:,}".format(s.ready_files) }} extra cop{{ "y" if s.ready_files == 1 else "ies" }} ({{ s.ready_bytes | size }})</button></p>
+</form>
+{% else %}
+<p class="card">No duplicates left in the last scan. 🎉</p>
+{% endif %}
+
+{% elif view == "pairs" and s %}
+<p class="hint">Folder pairs that share identical files, biggest first. Pick the folder whose copies you want to keep.</p>
+{% for p in pairs %}
+<div class="card group-card">
+  <div class="head"><b>{{ "{:,}".format(p.groups) }} set{{ "s" if p.groups != 1 }}</b>
+    <span class="muted">{{ p.extra_bytes | size }} · e.g. {{ p.examples | join(", ") }}</span>
+    {% if p.winner %}<span class="badge ok">decided</span>{% endif %}</div>
+  <div class="pair">
+    {% for side, other in [(p.a, p.b), (p.b, p.a)] %}
+    {% set state = "" if not p.winner else ("winner" if p.winner == side else "loser") %}
+    <div class="side-{{ 'a' if loop.first else 'b' }} {{ state }}">
+      {% set root, rest = split(side) %}
+      <span class="path"><span class="faint">{{ root }}</span>{{ rest or side }}</span>
+      <form method="post" action="/files/duplicates/prefer" class="row">
+        <input type="hidden" name="a" value="{{ p.a }}"><input type="hidden" name="b" value="{{ p.b }}">
+        <input type="hidden" name="next" value="/files/duplicates?view=pairs">
+        {% if state == "winner" %}
+          <button class="btn sm" name="keep" value="">Undo choice</button>
+        {% else %}
+          <button class="btn sm {{ '' if state else 'primary' }}" name="keep" value="{{ side }}">Keep copies here</button>
+        {% endif %}
+      </form>
+    </div>
+    {% if loop.first %}<div class="vs">vs</div>{% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<p class="card">No folder pairs: every set is inside a single folder.</p>
+{% endfor %}
+
+{% elif view == "groups" and s %}
+<div class="row" style="margin-bottom:10px">
+  <span class="hint">Show:</span>
+  {% for key, label in [("all", "All"), ("suggested", "Needs a decision"), ("converted", "HEIC + PNG"), ("ready", "Decided")] %}
+  <a class="chip{{ ' active' if show == key }}" href="/files/duplicates?view=groups&show={{ key }}">{{ label }}</a>
+  {% endfor %}
+  <span class="meta">{{ "{:,}".format(total) }} sets, biggest first</span>
+</div>
+{% for gid, digest, d in groups %}
+<div class="card group-card">
+  <div class="head"><b>{{ d.keep.size | size }}</b><span class="muted">× {{ d.remove | length + 1 }} copies</span>
+    {{ reason_badge(d.reason) }}</div>
+  <table class="list">
+    {% for c in [d.keep] + d.remove %}
+    <tr class="{{ 'keep-row' if loop.first }}">
+      {% set root, rest = split(c.path) %}
+      <td class="path"><span class="faint">{{ root }}</span>{{ rest }}</td>
+      <td class="num muted">{{ c.mtime | ts }}</td>
+      <td class="num actions">
+        {% if not loop.first %}
+        <form method="post" action="/files/duplicates/choose" class="inline">
+          <input type="hidden" name="digest" value="{{ digest }}"><input type="hidden" name="keep" value="{{ c.path }}">
+          <input type="hidden" name="next" value="/files/duplicates?view=groups&show={{ show }}&page_no={{ page_no }}">
+          <button class="link">Keep this one</button></form>
+        {% elif d.reason == "choice" %}
+        <form method="post" action="/files/duplicates/choose" class="inline">
+          <input type="hidden" name="digest" value="{{ digest }}"><input type="hidden" name="keep" value="">
+          <input type="hidden" name="next" value="/files/duplicates?view=groups&show={{ show }}&page_no={{ page_no }}">
+          <button class="link">Undo choice</button></form>
+        {% endif %}
+        {{ reveal(c.path) }}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<p class="card">Nothing to show here.</p>
+{% endfor %}
+<div class="row">
+  {% if page_no > 0 %}<a class="btn" href="/files/duplicates?view=groups&show={{ show }}&page_no={{ page_no - 1 }}">← Previous</a>{% endif %}
+  {% if more %}<a class="btn" href="/files/duplicates?view=groups&show={{ show }}&page_no={{ page_no + 1 }}">Next →</a>{% endif %}
+</div>
+
+{% elif view == "empty" and s %}
+{% if empty %}
+<form method="post" action="/files/duplicates/empty" class="card">
+  <p>{{ "{:,}".format(empty | length) }} folders with nothing in them (or only other empty folders). Removing them is
+    logged, and Restore creates them again.</p>
+  <ul class="scroll-list path">{% for f in empty %}<li>{{ f }}</li>{% endfor %}</ul>
+  <label class="row"><input type="checkbox" name="confirm" value="yes" required> These can go</label>
+  <p><button class="btn primary">Remove {{ "{:,}".format(empty | length) }} empty folders</button></p>
+</form>
+{% else %}
+<p class="card">No empty folders found{{ " (run a new scan to look again)" if s }}.</p>
+{% endif %}
+
+{% elif view == "removed" %}
+{% if batches %}
+<table class="list card">
+  <thead><tr><th>When (UTC)</th><th>What</th><th class="num">Files</th><th class="num">Size</th><th class="num">Still moved</th><th></th></tr></thead>
+  <tbody>
+  {% for b in batches %}
+  <tr>
+    <td>{{ b.created_at[:16].replace("T", " ") }}</td>
+    <td>{{ "Extra copies" if b.kind == "duplicates" else "Empty folders" }}</td>
+    <td class="num">{{ "{:,}".format(b.files) }}</td>
+    <td class="num">{{ b.bytes | size if b.bytes else "" }}</td>
+    <td class="num">{{ "{:,}".format(b.still_removed) }}</td>
+    <td class="num">
+      <button class="link" hx-get="/files/duplicates/batch/{{ b.id }}" hx-target="#batch-{{ b.id }}" hx-swap="innerHTML">List</button>
+      {% if b.still_removed %}
+      <form method="post" action="/files/duplicates/restore/{{ b.id }}" class="inline">
+        <button class="btn sm"{% if other_job or (job and job.running) %} disabled{% endif %}>Restore</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  <tr><td colspan="6" id="batch-{{ b.id }}" style="padding:0"></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">Moved copies stay in “{{ HOLDING_FOLDER }}” at the top of each drive until you empty that folder
+  yourself (for example after a few weeks).</p>
+{% else %}
+<p class="card">Nothing has been moved yet.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

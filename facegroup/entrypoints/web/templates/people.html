@@ -5,7 +5,7 @@
   <h1>Add your photo folder</h1>
   <p>FaceGroup only reads your photos. It never moves, renames or edits them.</p>
   <form method="post" action="/roots" class="row">
-    <input name="path" placeholder="C:\Users\you\Pictures" required size="48" aria-label="Folder path">
+    <input name="path" placeholder="C:\Users\you\Pictures" required size="48" aria-label="Folder path" data-pick="Choose your photo folder">
     <button class="btn primary" type="submit">Add and scan</button>
   </form>
 </section>
@@ -71,7 +71,7 @@
   · {{ counts.counts['items'] }} photos · {{ counts.counts['faces'] }} faces
   <details class="inline"><summary>Add folder</summary>
     <form method="post" action="/roots" class="row">
-      <input name="path" placeholder="D:\Photos" required size="40" aria-label="Folder path">
+      <input name="path" placeholder="D:\Photos" required size="40" aria-label="Folder path" data-pick="Choose a photo folder">
       <button class="btn" type="submit">Add and scan</button>
     </form>
   </details>

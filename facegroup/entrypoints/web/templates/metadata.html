@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Remove metadata{% endblock %}
+{% block main %}
+<div class="page-head"><h1>Remove metadata</h1></div>
+<p class="lede">Before sharing pictures, check what they give away (location, camera, date) and make clean copies
+  without it. Clean copies go into a new folder; the originals are never changed.</p>
+
+{% include "_tool_common.html" %}
+
+{% if job and job.kind == "metadata-check" and not job.running and job.result.tally is defined %}
+{% set t = job.result.tally %}
+<div class="stats">
+  <div class="stat"><b>{{ "{:,}".format(job.result.files) }}</b><span>pictures checked</span></div>
+  <div class="stat {{ 'warn' if t.gps }}"><b>{{ "{:,}".format(t.gps or 0) }}</b><span>with a location (GPS)</span></div>
+  <div class="stat"><b>{{ "{:,}".format(t.exif or 0) }}</b><span>with camera data (EXIF)</span></div>
+  <div class="stat"><b>{{ "{:,}".format(t.date or 0) }}</b><span>with the date taken</span></div>
+  <div class="stat"><b>{{ "{:,}".format((t.xmp or 0) + (t.iptc or 0) + (t.comments or 0)) }}</b><span>with other tags or comments</span></div>
+  <div class="stat good"><b>{{ "{:,}".format(t.clean or 0) }}</b><span>already clean</span></div>
+</div>
+{% if job.result.with_gps %}
+<details class="card"><summary>Pictures that reveal where they were taken ({{ job.result.with_gps | length }})</summary>
+  <ul class="scroll-list path">{% for p in job.result.with_gps %}<li>{{ p }}</li>{% endfor %}</ul></details>
+{% endif %}
+{% endif %}
+
+<form method="post" action="/tools/metadata/check" class="card form-grid" style="margin-top:14px">
+  <label for="folder">Folder</label>
+  <input type="text" id="folder" name="folder" list="places" required value="{{ folder }}" data-pick="Choose the folder with pictures"
+         placeholder="D:\To share (Browse…, paste a path, or right-click a folder in Explorer)">
+  <label>Subfolders</label>
+  <div class="checks"><label><input type="checkbox" name="recurse" value="1" checked> <span>Include subfolders</span></label></div>
+
+  <div class="wide"><h2 style="margin:8px 0 0">Clean copies</h2></div>
+  <label>Keep</label>
+  <div class="checks">
+    <label><input type="checkbox" name="keep_icc" value="1" checked> <span>Colour profile <small>so colours look the same; it says nothing about you</small></span></label>
+    <label><input type="checkbox" name="keep_date" value="1"> <span>Date taken <small>everything else still goes, including location</small></span></label>
+    <label><input type="checkbox" name="overwrite" value="1"> <span>Replace files already in the new folder</span></label>
+  </div>
+  <label for="output">Save to</label>
+  <input type="text" id="output" name="output" data-pick="Choose where to save the clean copies" placeholder="Leave empty: a new folder next to it, “… clean”">
+
+  <div class="wide row">
+    {% set busy = other_job or (job and job.running) %}
+    <button type="submit" class="btn big"{% if busy %} disabled{% endif %}>Check only</button>
+    <button type="submit" class="btn primary big" formaction="/tools/metadata/clean"{% if busy %} disabled{% endif %}>Make clean copies</button>
+    <span class="hint">Pictures are turned upright first, so nothing appears sideways once the rotation tag is gone.</span>
+  </div>
+</form>
+{% endblock %}

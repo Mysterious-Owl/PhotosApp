@@ -8,6 +8,7 @@ request; cross-origin POSTs are refused; images are served by id only.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import hmac
 import json
 from pathlib import Path
@@ -17,6 +18,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from facegroup.domain.files import HOLDING_FOLDER
+from facegroup.entrypoints.web.tools_routes import add_tool_routes
 from facegroup.ports.search import SearchFilters
 from facegroup.services.organize import CATEGORIES
 
@@ -40,6 +43,14 @@ def person_label(p) -> str:
     return name.strip() if name and name.strip() else f"Face {pid}"
 
 
+def human_size(n: int | None) -> str:
+    n = n or 0
+    for unit, scale in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
+        if n >= scale:
+            return f"{n / scale:.1f} {unit}" if unit == "GB" else f"{n / scale:.0f} {unit}"
+    return f"{n} bytes"
+
+
 def _safe_next(url: str | None, default: str = "/people") -> str:
     """Only same-site relative paths, so a crafted form cannot redirect elsewhere."""
     if not url or not url.startswith("/") or url.startswith("//"):
@@ -51,6 +62,9 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     web = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.filters["label"] = person_label
+    templates.env.filters["size"] = human_size
+    templates.env.filters["ts"] = lambda t: datetime.fromtimestamp(t).strftime("%d %b %Y") if t else ""
+    templates.env.globals["HOLDING_FOLDER"] = HOLDING_FOLDER
     web.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://{h}" for h in allowed_hosts}
@@ -86,10 +100,10 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     # -- session ----------------------------------------------------------------------------------------
 
     @web.get("/login")
-    def login(t: str = ""):
+    def login(t: str = "", next: str = "/photos"):
         if not hmac.compare_digest(t, token):
             return HTMLResponse("<h1>Invalid or expired link</h1>", status_code=401)
-        r = RedirectResponse("/photos", status_code=303)
+        r = RedirectResponse(_safe_next(next, "/photos"), status_code=303)  # e.g. a tool page from the right-click menu
         r.set_cookie(COOKIE, token, httponly=True, samesite="strict", path="/")
         return r
 
@@ -409,5 +423,7 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     def photo(mid: int):
         data = app.media.photo_jpeg(mid)
         return Response(data, media_type="image/jpeg", headers=cache_headers) if data else Response(status_code=404)
+
+    add_tool_routes(web, app, page)
 
     return web

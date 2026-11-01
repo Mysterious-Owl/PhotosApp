@@ -1,0 +1,22 @@
+{#- Shared bits of the tool pages: folder suggestions, the "another job is running" notice, the job panel and the
+    finished-job card. `extra` is the page's own result block, rendered under the summary. -#}
+<datalist id="places">{% for p in places %}<option value="{{ p }}">{% endfor %}</datalist>
+{% if other_job %}
+<p class="notice">{{ other_job.title }} is running. It has to finish (or be stopped) before this tool can start.</p>
+{% endif %}
+{% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
+{% if job and job.running %}
+  {% include "_job.html" %}
+{% elif job and job.state != "idle" %}
+<div class="card job {{ job.state }}">
+  <div class="row"><b>{{ job.title }}</b><span>{{ job.message }}</span></div>
+  {% if job.result.output %}
+  <p class="meta">Saved to <span class="path">{{ job.result.output }}</span></p>
+  {% endif %}
+  {% set problems = (job.result.errors or []) + (job.result.skipped or []) %}
+  {% if problems %}
+  <details><summary>{{ problems | length }} file{{ "s" if problems | length != 1 }} not done, and why</summary>
+    <ul class="scroll-list path">{% for e in problems %}<li>{{ e }}</li>{% endfor %}</ul></details>
+  {% endif %}
+</div>
+{% endif %}

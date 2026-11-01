@@ -1,35 +1,73 @@
+{%- set path = request.url.path -%}
+{%- macro nav(href, label, icon, also=()) -%}
+  {#- Active on its own pages and on the pages listed in `also` (e.g. a person's page belongs to People). -#}
+  {%- set ns = namespace(on=false) -%}
+  {%- for p in (href,) + also -%}
+    {%- if path == p or path.startswith(p ~ "/") -%}{%- set ns.on = true -%}{%- endif -%}
+  {%- endfor -%}
+  <a href="{{ href }}"{% if ns.on %} class="active" aria-current="page"{% endif %}>
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">{{ icon | safe }}</svg>{{ label }}</a>
+{%- endmacro -%}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}People{% endblock %} · FaceGroup</title>
+  <script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body hx-boost="true">
-  <header class="bar">
-    <a class="brand" href="/photos">FaceGroup</a>
-    <nav class="row"><a href="/photos">Photos</a><a href="/people">People</a><a href="/events">Events</a><a href="/search">Search</a><a href="/check">Check</a><a href="/tidy">Tidy</a></nav>
-    <form method="get" action="/search" class="searchbox" role="search">
-      <input type="search" name="q" placeholder="Search: beach, birthday cake, red car…" aria-label="Search photos"
-             value="{{ q if q is defined else '' }}">
-    </form>
-    <div id="status" class="status status-{{ status.state }}" data-version="{{ status.version }}">
-      <span class="dot"></span><span class="msg">{{ status.message }}</span>
+<div class="app">
+  <aside class="side">
+    <a class="brand" href="/photos">
+      <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" fill="var(--accent)"/><circle cx="12" cy="10" r="3.6" fill="var(--accent-text)"/><path d="M5.8 19c1.2-3 3.5-4.5 6.2-4.5s5 1.5 6.2 4.5" fill="var(--accent-text)"/></svg>
+      <div><b>FaceGroup</b><small>Photos, people &amp; files</small></div>
+    </a>
+    <nav aria-label="Main">
+      <div class="group">Library</div>
+      {{ nav("/photos", "Photos", '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>') }}
+      {{ nav("/people", "People", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.7.8 2.8 2.6 3.2 5.2"/>', ("/suggestions",)) }}
+      {{ nav("/events", "Events", '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>', ("/event",)) }}
+      {{ nav("/search", "Search", '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', ("/saved",)) }}
+      <div class="group">Clean up</div>
+      {{ nav("/tidy", "Tidy", '<path d="M3 6h18M7 6V4h10v2M6 6l1 14h10l1-14"/>') }}
+      {{ nav("/files/duplicates", "Duplicate files", '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>') }}
+      {{ nav("/check", "Check", '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>') }}
+      <div class="group">Tools</div>
+      {{ nav("/tools/convert", "Convert HEIC", '<path d="M4 7h11l-3-3M20 17H9l3 3"/>') }}
+      {{ nav("/tools/metadata", "Remove metadata", '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><path d="m9 7 6 6M15 7l-6 6"/>') }}
+    </nav>
+    <div class="side-foot">
+      <div class="privacy"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Offline · nothing leaves this PC</div>
+      <button type="button" id="theme" class="btn ghost sm" title="Switch between system, light and dark">Theme: System</button>
     </div>
-    <form method="post" action="/scan">
-      <input type="hidden" name="next" value="{{ request.url.path }}">
-      <button type="submit" class="btn">Scan now</button>
-    </form>
-    <form method="post" action="/undo">
-      <input type="hidden" name="next" value="{{ request.url.path }}">
-      <button type="submit" class="btn" title="Undo the last people change">Undo</button>
-    </form>
-  </header>
-  <main>
-    {% block main %}{% endblock %}
-  </main>
+  </aside>
+
+  <div class="content">
+    <header class="top">
+      <form method="get" action="/search" class="searchbox" role="search">
+        <input type="search" name="q" placeholder="Search: beach, birthday cake, red car…" aria-label="Search photos"
+               value="{{ q if q is defined else '' }}">
+      </form>
+      <div id="status" class="status status-{{ status.state }}" data-version="{{ status.version }}">
+        <span class="dot"></span><span class="msg">{{ status.message }}</span>
+      </div>
+      <form method="post" action="/scan">
+        <input type="hidden" name="next" value="{{ path }}">
+        <button type="submit" class="btn">Scan now</button>
+      </form>
+      <form method="post" action="/undo">
+        <input type="hidden" name="next" value="{{ path }}">
+        <button type="submit" class="btn" title="Undo the last people change">Undo</button>
+      </form>
+    </header>
+    <main>
+      {% block main %}{% endblock %}
+    </main>
+  </div>
+</div>
 </body>
 </html>

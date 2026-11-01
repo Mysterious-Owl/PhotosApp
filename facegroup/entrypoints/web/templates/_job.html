@@ -1,0 +1,17 @@
+{#- Progress of the running tool job. Polls itself every second; when the job ends the server asks htmx to reload
+    the page, which then shows the results. -#}
+<div class="card job" id="job" hx-get="/tools/job" hx-trigger="every 1s" hx-swap="outerHTML" hx-push-url="false">
+  <div class="row">
+    <b>{{ job.title }}</b>
+    <span class="muted">{{ job.message }}</span>
+    <button class="btn sm" style="margin-left:auto" hx-post="/tools/stop" hx-swap="none"
+            title="Finishes the files in hand, then stops">Stop</button>
+  </div>
+  {% if job.total %}
+  <div class="progress" role="progressbar" aria-valuenow="{{ job.percent }}" aria-valuemin="0" aria-valuemax="100">
+    <div style="width: {{ job.percent }}%"></div></div>
+  <div class="meta">{{ "{:,}".format(job.done) }} of {{ "{:,}".format(job.total) }}</div>
+  {% else %}
+  <div class="progress indeterminate"><div></div></div>
+  {% endif %}
+</div>
