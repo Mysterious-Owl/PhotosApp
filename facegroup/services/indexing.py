@@ -1,4 +1,4 @@
-"""IndexingService: runs the stage DAG in passes (derive, then faces), one model at a time.
+"""IndexingService: runs the stage DAG in passes (derive, faces, embed; OCR separately), one model at a time.
 
 It stores faces but never decides who they are; that is PeopleService's job (M2).
 """
@@ -87,7 +87,8 @@ class IndexingService:
         return released
 
     def run_all(self) -> list[StageReport]:
-        """Every pass in order. The one place that knows the stage order (CLI and scheduler both use it)."""
+        """The model passes in order (CLI and scheduler both use it). OCR is not included: it needs the categories
+        from OrganizeService, so callers run organize.refresh(), then run_ocr(), then people.refresh()."""
         return [self.run_derive(), self.run_faces(), self.run_embed()]
 
     # -- derive: decode once, working image + thumbnail, items ---------------------------------------

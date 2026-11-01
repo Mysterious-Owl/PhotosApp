@@ -2,7 +2,7 @@
 
 As of 2026-10-17 · Status: v3.1, after two review rounds and the M1 build ([PLAN_REVIEW.md](PLAN_REVIEW.md)) · Companion to [PLAN.md](../PLAN.md)
 
-FaceGroup is **one local process built as a core with ports and adapters**. Entry points (API, CLI, scheduler) call application services. Services and ports belong to the core and depend only on the domain. Adapters (models, SQLite, decoders) sit outside the core, implement its ports, and are wired in one place. All data lives in one SQLite file in `%LOCALAPPDATA%`, outside OneDrive.
+FaceGroup is **one local process built as a core with ports and adapters**. Entry points (API, CLI, scheduler) call application services. Services and ports belong to the core and depend only on the domain. Adapters (models, SQLite, decoders) sit outside the core, implement its ports, and are wired in one place. All data lives in one SQLite file in `data/app` in the project folder, outside OneDrive.
 
 **v1 scope:** faces, image embeddings and OCR. Captions from a vision-language model are **deferred**. Adding them later means one `Captioner` port, one pipeline stage and `ITEM_TEXT.source = 'caption'`; nothing else changes.
 
@@ -21,7 +21,7 @@ flowchart LR
         subgraph od[OneDrive or other disks]
             lib[(Photo and video folders<br/>READ-ONLY)]
         end
-        subgraph local[%LOCALAPPDATA%\FaceGroup - never synced]
+        subgraph local[data/app - never synced]
             db[(facegroup.db<br/>metadata, jobs, vectors, FTS)]
             cache[(Thumbnails and<br/>working-image cache)]
             models[(Model files)]
@@ -486,25 +486,29 @@ flowchart LR
 
 ## 7. Code layout
 
+As built (2026-11-01):
+
 ```
 facegroup/
-  domain/        entities.py, policies.py            # pure, imports nothing from other packages
-  ports/         face.py, embed.py, text.py, decode.py, repo.py, vectors.py   # typing.Protocol, domain types only
-  services/      library.py, indexing.py, people.py, search.py
+  domain/        entities, policies, people, search, organize, browse   # pure, imports nothing from other packages
+  ports/         face, media, people, search, store                      # typing.Protocol, domain types only
+  services/      library, indexing, media, people, search, organize, browse
   adapters/
-    models/      buffalo_onnx.py (+ norm_crop alignment), embeddinggemma2.py, siglip2.py, rapidocr.py
-    storage/     sqlite_uow.py, repos.py, writer.py, sqlite_vec_index.py, migrations/0001_init.sql
-    media/       decoder.py (Pillow, pillow-heif), video.py (PyAV), onedrive.py, thumbs.py
-  entrypoints/   api/ (routers), cli.py, scheduler.py
-  web/           templates + static (served by the API, runs in the browser)
+    models/      buffalo_onnx (+ norm_crop alignment), siglip2_onnx, ocr (RapidOCR), download
+    storage/     db, writer, sqlite_store, people_store, search_store, organize_store, migrations/0001-0007
+    media/       decoder (Pillow, pillow-heif), files (OneDrive placeholders), cache (thumbs, crops), phash
+    clustering.py, instance_lock.py
+  entrypoints/   cli.py, scheduler.py, web/ (server.py, templates/, static/ with HTMX)
   bootstrap.py   config -> adapters -> services
-  config.py      typed settings (pydantic-settings, %LOCALAPPDATA%\FaceGroup\config.toml)
+  config.py      typed settings (pydantic-settings, data/app/config.toml)
+data/            git-ignored: app/ (database, cache, models, logs), eval/, bench/
 tests/
-  unit/          domain + services with fake adapters (deterministic vectors)
-  property/      "assignment and suggestions never break a user decision"
-  integration/   real models on a 50-image fixture set
-  eval/          grouping precision/recall per group, search recall@10
+  unit/          domain + services with fake adapters (deterministic vectors), plus web and CLI
+  integration/   real models on public sample images (pytest -m integration)
+  eval/          LFW, Flickr30k retrieval, OCR and category accuracy on public or synthetic data
 ```
+
+Not built yet from the original plan: video (PyAV), captions, EmbeddingGemma 2 search, and a separate property-test folder (property tests live in `tests/unit`).
 
 **buffalo_l without the `insightface` package:** load its ONNX files directly with `onnxruntime` and copy the roughly 20-line `norm_crop` face alignment. This removes the C++ build-tools requirement from the prototype.
 
@@ -587,3 +591,17 @@ Where the M1 code deliberately differs from, or adds to, the design above:
 - **OCR stage** runs after organising, because it needs the categories. Only screenshot, document, receipt and meme items are read by default. Text goes to `item_text`, mirrored into FTS5 `ocr_fts` by triggers.
 - **Search** fuses three rankings: meaning (vectors), file names and text in images. Names in the query become person filters, with an escape hatch to search the words literally. Results fold bursts.
 - **Browsing** reuses search's filter SQL (`_filter_sql`), so the timeline, memories, events and search always agree. Events are gap-based clusters (> 8 h gap, >= 6 photos) computed on request. Saved searches store only whitelisted query parameters.
+
+## 14. Review fixes (2026-11-01)
+
+A code review of the whole package found and fixed:
+
+- **People operations are serialised** (`PeopleService._lock`). The scheduler's `refresh()` votes from a snapshot; a correction made in between could be overwritten by it. The store's auto-assign UPDATE also refuses a face the user rejected for that person, or a person deleted since the vote.
+- **Live status moved to `/status/stream`.** The Events page had taken `/events`, which hid the stream. A test now fails if two routes share a path.
+- **Scan updates pass id lists as one JSON value** (`json_each`), so freeing up space on 30k+ OneDrive photos no longer exceeds SQLite's variable limit.
+- **Search matrix reload** keys on a trigger-kept counter (migration 0008) instead of row count and id sum, which missed a re-indexed photo that got its old id back.
+- **Smaller fixes:** unique temp names for cache writes; one lock around SigLIP 2's lazy loading; buffalo_l extracted via `.part` files and "installed" only once `MODEL_INFO.json` exists; month jumps use the timeline's own filters; "On this day" crosses New Year; the screenshot name rule checks the file name only, with whole words; the self-test sample is random when people outnumber it.
+
+Known and left as is: `services/media.py` imports `cv2` and the cache adapter directly (a layering exception for image encoding); FTS5 `media_id`/`item_id` are UNINDEXED, so deleting many photos scans the text index (fine below 50k; rebuild keyed on rowid if it gets slow).
+
+- **"Forget person" deletes and suppresses only confirmed faces** (decided 2026-11-01). Automatic matches become unassigned and are re-voted, because a wrong automatic match deleted and suppressed would hide another person's look-alikes for good.

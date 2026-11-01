@@ -8,14 +8,13 @@ lower score long before it showed up anywhere else.
 
 Standard protocol: 6,000 pairs (3,000 same person, 3,000 different) in 10 folds; the threshold is chosen on
 9 folds and accuracy measured on the held-out fold. Data (~173 MB, research use) is downloaded once to
-%LOCALAPPDATA%\\FaceGroup-eval\\lfw, never into the repo.
+data\\eval\\lfw (git-ignored).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import tarfile
 import time
 import urllib.request
@@ -25,7 +24,7 @@ import numpy as np
 
 from facegroup.adapters.media.decoder import PillowDecoder
 from facegroup.adapters.models.buffalo_onnx import ARCFACE_DST, BuffaloL, ensure_buffalo_l, norm_crop
-from facegroup.config import default_data_dir
+from facegroup.config import default_data_dir, default_eval_dir
 
 LFW_URL = "https://ndownloader.figshare.com/files/5976018"  # lfw.tgz, original 250x250 images
 PAIRS_URL = "https://ndownloader.figshare.com/files/5976006"  # pairs.txt
@@ -103,7 +102,7 @@ def kfold_accuracy(sims: np.ndarray, same: np.ndarray, folds: int) -> tuple[floa
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--base", type=Path, default=Path(os.environ.get("LOCALAPPDATA", ".")) / "FaceGroup-eval" / "lfw")
+    ap.add_argument("--base", type=Path, default=default_eval_dir() / "lfw")
     args = ap.parse_args()
 
     pairs_file, images = fetch(args.base)

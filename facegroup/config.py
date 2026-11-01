@@ -1,4 +1,4 @@
-"""Typed settings: defaults < %LOCALAPPDATA%\\FaceGroup\\config.toml < FACEGROUP_* environment variables."""
+"""Typed settings: defaults < data\\app\\config.toml < FACEGROUP_* environment variables."""
 
 from __future__ import annotations
 
@@ -9,9 +9,27 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, TomlConfigSettingsSource
 
 
+def _data_root() -> Path:
+    """data\\ in the project folder (git-ignored), holding app, eval and bench data.
+
+    Only when running from the source checkout; an installed package would otherwise put the data inside the
+    virtual environment, so it falls back to %LOCALAPPDATA%\\FaceGroup.
+    """
+    project = Path(__file__).resolve().parent.parent
+    if (project / "pyproject.toml").exists():
+        return project / "data"
+    return Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share") / "FaceGroup"
+
+
+DATA_ROOT = _data_root()
+
+
 def default_data_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / ".local" / "share")
-    return Path(base) / "FaceGroup"
+    return DATA_ROOT / "app"
+
+
+def default_eval_dir() -> Path:
+    return DATA_ROOT / "eval"
 
 
 class Settings(BaseSettings):
@@ -51,7 +69,8 @@ class Settings(BaseSettings):
     # Self-improvement: automatic matches must be right this often, measured on your own labels.
     learn_target_precision: float = 0.98
 
-    # Text in images (OCR). Off for ordinary photos by default (slow: ~2 s per text-heavy image on CPU).
+    # Text in images (OCR): on for screenshots, documents, receipts and memes. ocr_all_photos also reads ordinary
+    # photos, off by default because it is slow (~2 s per text-heavy image on CPU).
     ocr_enabled: bool = True
     ocr_all_photos: bool = False
 

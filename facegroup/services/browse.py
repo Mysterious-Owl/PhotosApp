@@ -54,9 +54,9 @@ class BrowseService:
             "total": sum(len(ids) for _, ids in months),
         }
 
-    def month_page(self, key: str, months_per_page: int = 6) -> int:
-        """Which timeline page shows month `key` (YYYY-MM)."""
-        keys = [k for k, _ in by_month(self._store.dated_media(SearchFilters()))]
+    def month_page(self, filters: SearchFilters, key: str, months_per_page: int = 6) -> int:
+        """Which timeline page shows month `key` (YYYY-MM). Same filters as `timeline`, or the pages differ."""
+        keys = [k for k, _ in by_month(self._store.dated_media(filters))]
         return keys.index(key) // months_per_page if key in keys else 0
 
     def memories(self, filters: SearchFilters, today: date | None = None) -> list[tuple[int, list[Tile]]]:

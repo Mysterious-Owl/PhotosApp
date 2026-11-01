@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -27,6 +28,9 @@ def iso(t: datetime) -> str:
 
 def _placeholders(n: int) -> str:
     return ",".join("?" * n)
+
+
+_JSON_IDS = "(SELECT value FROM json_each(?))"
 
 
 class SqliteBase:
@@ -58,7 +62,7 @@ class SqliteBase:
                 try:
                     conn.close()
                 except sqlite3.ProgrammingError:
-                    pass  # created on another thread; closed when that thread's objects go away
+                    pass  # already closed
             self._all_reads.clear()
         self._local = threading.local()
 
@@ -129,15 +133,16 @@ class SqliteStore(SqliteBase):
                     (f.size, f.mtime, FileState.CHANGED.value, media_id),
                 )
                 requeue_derive(c, media_id)
+            # Id lists go in as one JSON value: tens of thousands of "?" would pass SQLite's variable limit.
             if plan.reappeared:
                 c.execute(
-                    f"UPDATE media SET file_state=?, missing_since=NULL WHERE id IN ({_placeholders(len(plan.reappeared))})",
-                    (FileState.ACTIVE.value, *plan.reappeared),
+                    f"UPDATE media SET file_state=?, missing_since=NULL WHERE id IN {_JSON_IDS}",
+                    (FileState.ACTIVE.value, json.dumps(plan.reappeared)),
                 )
             if plan.became_online_only:
                 c.execute(
-                    f"UPDATE media SET file_state=? WHERE id IN ({_placeholders(len(plan.became_online_only))})",
-                    (FileState.ONLINE_ONLY.value, *plan.became_online_only),
+                    f"UPDATE media SET file_state=? WHERE id IN {_JSON_IDS}",
+                    (FileState.ONLINE_ONLY.value, json.dumps(plan.became_online_only)),
                 )
             for media_id, f in plan.moved:
                 c.execute(
@@ -146,9 +151,8 @@ class SqliteStore(SqliteBase):
                 )
             if plan.missing:
                 c.execute(
-                    f"UPDATE media SET file_state=?, missing_since=COALESCE(missing_since, ?) "
-                    f"WHERE id IN ({_placeholders(len(plan.missing))})",
-                    (FileState.MISSING.value, now, *plan.missing),
+                    f"UPDATE media SET file_state=?, missing_since=COALESCE(missing_since, ?) WHERE id IN {_JSON_IDS}",
+                    (FileState.MISSING.value, now, json.dumps(plan.missing)),
                 )
             removed = 0
             if plan.remove_missing_before:

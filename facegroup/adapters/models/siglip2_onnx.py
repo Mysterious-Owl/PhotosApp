@@ -8,6 +8,7 @@ lower-cased, Gemma-tokenised with an end token, padded to 64.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,7 @@ class SigLip2:
         self._vision: ort.InferenceSession | None = None
         self._text: ort.InferenceSession | None = None
         self._tokenizer: Tokenizer | None = None
+        self._load_lock = threading.Lock()  # warm-up, searches and organize can all ask first
 
     def _session(self, name: str) -> ort.InferenceSession:
         opts = ort.SessionOptions()
@@ -73,17 +75,22 @@ class SigLip2:
 
     def embed_images(self, images_rgb: list[np.ndarray]) -> np.ndarray:
         if self._vision is None:
-            self._vision = self._session("vision")
+            with self._load_lock:
+                if self._vision is None:
+                    self._vision = self._session("vision")
         batch = np.stack([self._preprocess(im) for im in images_rgb])
         out = self._vision.run(["pooler_output"], {"pixel_values": batch})[0]
         return _normalise(out)
 
     def embed_queries(self, texts: list[str]) -> np.ndarray:
         if self._text is None:
-            self._text = self._session("text")
-            self._tokenizer = Tokenizer.from_file(str(self._dir / "tokenizer.json"))
-            self._tokenizer.enable_truncation(self.max_tokens)
-            self._tokenizer.enable_padding(length=self.max_tokens, pad_id=0, pad_token="<pad>")
+            with self._load_lock:
+                if self._text is None:
+                    tokenizer = Tokenizer.from_file(str(self._dir / "tokenizer.json"))
+                    tokenizer.enable_truncation(self.max_tokens)
+                    tokenizer.enable_padding(length=self.max_tokens, pad_id=0, pad_token="<pad>")
+                    self._tokenizer = tokenizer
+                    self._text = self._session("text")  # set last: other threads test it without the lock
         ids = np.array([e.ids for e in self._tokenizer.encode_batch([t.lower() for t in texts])], np.int64)
         out = self._text.run(["pooler_output"], {"input_ids": ids})[0]
         return _normalise(out)

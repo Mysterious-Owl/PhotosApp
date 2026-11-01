@@ -179,10 +179,10 @@ Synthetic text is clean, so 100% is an upper bound; real photos of signs or crum
 
 ```powershell
 python -m uv run python tests/eval/eval_lfw.py                         # ~13 min, downloads LFW once
-%LOCALAPPDATA%\FaceGroup-eval\refenv\Scripts\python tests/eval/eval_retrieval.py   # reference models (PyTorch env)
+data\eval\refenv\Scripts\python tests/eval/eval_retrieval.py   # reference models (PyTorch env)
 python -m uv run python tests/eval/eval_retrieval_onnx.py --variant fp16   # app's ONNX port vs reference
 python -m uv run python scripts/profile_library.py "C:\path\to\photos"  # read-only
 python -m uv run python scripts/bench.py --count 10000 --kill-after 240
 ```
 
-All data and outputs go to `%LOCALAPPDATA%\FaceGroup-eval` and `%LOCALAPPDATA%\FaceGroup-bench`, never into the repo.
+All data and outputs go to `data\eval` and `data\bench`, which git ignores.

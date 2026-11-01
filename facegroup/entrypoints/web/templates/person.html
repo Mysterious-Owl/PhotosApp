@@ -31,7 +31,7 @@
       <details class="inline danger">
         <summary>Forget this person</summary>
         <form method="post" action="/people/{{ person.id }}/forget" class="row">
-          <span>Deletes their faces from FaceGroup for good (photos are not touched). Type <code>forget</code>:</span>
+          <span>Deletes the faces you confirmed as them from FaceGroup for good; faces matched automatically go back to unsorted (photos are not touched). Type <code>forget</code>:</span>
           <input name="confirm" aria-label="Type forget to confirm" size="8">
           <button class="btn danger" type="submit">Forget</button>
         </form>

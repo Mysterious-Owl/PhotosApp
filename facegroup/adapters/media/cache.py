@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import cv2
@@ -74,6 +75,7 @@ def _write_jpeg(path: Path, rgb: np.ndarray, quality: int) -> None:
     if not ok:
         raise OSError(f"could not encode {path.name}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    # Unique per thread: the indexer and a web request can write the same thumbnail at the same time.
+    tmp = path.with_name(f"{path.name}.{threading.get_ident()}.tmp")
     tmp.write_bytes(buf.tobytes())
     tmp.replace(path)  # atomic: a crash never leaves a half-written image

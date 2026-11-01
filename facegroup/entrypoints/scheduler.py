@@ -1,4 +1,4 @@
-"""Scheduler: one background thread that runs scan -> derive -> faces -> people refresh when asked.
+"""Scheduler: one background thread that runs scan -> derive -> faces -> embed -> organize -> OCR -> people refresh.
 
 The web UI reads `status` (a snapshot dict plus a version number) and streams it to the browser.
 """

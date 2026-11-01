@@ -132,16 +132,6 @@ class SqliteOrganizeStore(SqliteBase):
             "ORDER BY top DESC, media_id", (media_id,)).fetchall()
         return [(r[0], bool(r[1])) for r in rows]
 
-    def stack_map(self, media_ids: list[int]) -> dict[int, tuple[int, bool, int]]:
-        """media_id -> (stack_id, is_top, stack size), for the given photos that are in a stack."""
-        if not media_ids:
-            return {}
-        rows = self._read().execute(
-            "SELECT s.media_id, s.stack_id, s.top, (SELECT COUNT(*) FROM stack_member x WHERE x.stack_id=s.stack_id) "
-            "FROM stack_member s WHERE s.media_id IN (SELECT value FROM json_each(?))",
-            (json.dumps([int(m) for m in media_ids]),)).fetchall()
-        return {r[0]: (r[1], bool(r[2]), r[3]) for r in rows}
-
     # -- per-photo flags ------------------------------------------------------------------------------------
 
     def set_flags(self, media_ids: list[int], favorite: bool | None = None, rating: int | None | str = "keep",

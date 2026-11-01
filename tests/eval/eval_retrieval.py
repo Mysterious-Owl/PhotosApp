@@ -1,18 +1,17 @@
 """Image-text retrieval on Flickr30k 1K test, using each model's official reference implementation.
 
 Runs in a separate reference environment (PyTorch + transformers), not the app's:
-    %LOCALAPPDATA%\\FaceGroup-eval\\refenv\\Scripts\\python.exe tests/eval/eval_retrieval.py [models...]
+    data\\eval\\refenv\\Scripts\\python.exe tests/eval/eval_retrieval.py [models...]
 
 1,000 images x 5 human captions. Text->image: for each caption, is its image in the top K? Image->text: for
 each image, is one of its captions in the top K? Same data, same metric, same machine for every model.
-Data (~141 MB, Flickr terms: research use) is downloaded to %LOCALAPPDATA%\\FaceGroup-eval\\flickr1k.
+Data (~141 MB, Flickr terms: research use) is downloaded to data\\eval\\flickr1k.
 """
 
 from __future__ import annotations
 
 import ast
 import json
-import os
 import sys
 import time
 import urllib.request
@@ -24,7 +23,7 @@ import pandas as pd
 import torch
 from PIL import Image
 
-BASE = Path(os.environ.get("LOCALAPPDATA", ".")) / "FaceGroup-eval"
+BASE = Path(__file__).resolve().parents[2] / "data" / "eval"  # runs in the reference env, without facegroup
 DATA = BASE / "flickr1k"
 REPO = "https://huggingface.co/datasets/nlphuji/flickr_1k_test_image_text_retrieval/resolve/main"
 

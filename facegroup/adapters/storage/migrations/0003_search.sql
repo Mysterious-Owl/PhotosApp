@@ -8,7 +8,7 @@ CREATE TABLE item_embedding (
 ) WITHOUT ROWID;
 
 -- Words from folder and file names ("2023 Goa trip/IMG_0042.jpg" -> "2023 goa trip img 0042 jpg").
--- OCR text and captions join this index in M4.
+-- (OCR text got its own table, ocr_fts, in migration 0006.)
 CREATE VIRTUAL TABLE media_text USING fts5(
     media_id UNINDEXED,
     path_words,

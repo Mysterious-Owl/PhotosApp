@@ -1,4 +1,5 @@
-"""SearchService: filter first, then rank by meaning (embeddings) and by words (file and folder names).
+"""SearchService: filter first, then rank by meaning (embeddings) and by words (file and folder names, text read
+from images); people's names in the query become a person filter.
 
 Never writes. The query encoder (text side of the embedder) is loaded on first use and kept.
 """

@@ -29,6 +29,13 @@ def test_on_this_day_previous_years_only():
     assert on_this_day([(9, "2024-02-29T12:00:00")], date(2025, 2, 28)) == [(1, [9])]  # leap day
 
 
+def test_on_this_day_window_crosses_new_year():
+    dated = [(1, "2025-12-31T20:00:00"), (2, "2026-12-31T20:00:00"), (3, "2025-01-02T09:00:00")]
+    # 31 Dec 2025 is a year and a day ago; yesterday (31 Dec 2026) is not a memory; 2 Jan 2025 is two years ago.
+    assert on_this_day(dated, date(2027, 1, 1), window_days=3) == [(1, [1]), (2, [3])]
+    assert on_this_day(dated, date(2026, 12, 31), window_days=3) == [(1, [1]), (2, [3])]
+
+
 def test_events_split_on_gaps_and_need_enough_photos():
     day1 = [(i, f"2024-07-01T{9 + i:02d}:00:00") for i in range(6)]  # 6 photos within a day
     day3 = [(10 + i, f"2024-07-03T{10 + i:02d}:00:00") for i in range(7)]

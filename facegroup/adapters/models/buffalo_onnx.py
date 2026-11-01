@@ -39,7 +39,8 @@ ARCFACE_DST = np.array(
 def ensure_buffalo_l(models_dir: Path, progress=None) -> Path:
     """Download buffalo_l once and keep only the two files we use. Returns the model folder."""
     target = models_dir / "buffalo_l"
-    if (target / DET_FILE).exists() and (target / REC_FILE).exists():
+    # MODEL_INFO.json is written last, so its presence means a complete install (not one cut off mid-extract).
+    if all((target / f).exists() for f in (DET_FILE, REC_FILE, "MODEL_INFO.json")):
         return target
     target.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=models_dir) as tmp:
@@ -48,8 +49,10 @@ def ensure_buffalo_l(models_dir: Path, progress=None) -> Path:
             for name in zf.namelist():
                 base = Path(name).name
                 if base in (DET_FILE, REC_FILE):
-                    with zf.open(name) as src, open(target / base, "wb") as dst:
+                    part = target / f"{base}.part"
+                    with zf.open(name) as src, open(part, "wb") as dst:
                         shutil.copyfileobj(src, dst)
+                    part.replace(target / base)
     missing = [f for f in (DET_FILE, REC_FILE) if not (target / f).exists()]
     if missing:
         raise RuntimeError(f"buffalo_l archive did not contain {missing}")

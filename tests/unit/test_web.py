@@ -31,6 +31,14 @@ def login(client):
     return client
 
 
+def test_no_two_routes_share_a_path(env):
+    # The first match wins, so a duplicate silently hides the second route (the status stream once lost to /events).
+    _, _, client = env
+    seen = [(r.path, m) for r in client.app.routes for m in getattr(r, "methods", None) or ()]
+    assert len(seen) == len(set(seen))
+    assert ("/status/stream", "GET") in seen
+
+
 class TestSecurity:
     def test_locked_without_session(self, env):
         _, _, client = env

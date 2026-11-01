@@ -1,9 +1,9 @@
-// Live status from the scheduler, and small selection helpers. No framework; htmx handles navigation.
+// Live status from the scheduler (server-sent events on /status/stream), and small selection helpers. No framework; htmx handles navigation.
 (function () {
   let wasBusy = null;
 
   function connect() {
-    const source = new EventSource("/events");
+    const source = new EventSource("/status/stream");
     source.onmessage = (e) => {
       const s = JSON.parse(e.data);
       const el = document.getElementById("status");

@@ -29,19 +29,24 @@ def month_label(key: str) -> str:
     return f"{MONTHS[int(month) - 1]} {year}"
 
 
+def _in_year(d: date, year: int) -> date:
+    try:
+        return d.replace(year=year)
+    except ValueError:  # 29 February in a non-leap year
+        return date(year, 2, 28)
+
+
 def on_this_day(dated: list[tuple[int, str]], today: date, window_days: int = 0) -> list[tuple[int, list[int]]]:
     """[(years ago, media ids)] taken on today's month and day (± window_days) in earlier years, most recent first."""
     out: dict[int, list[int]] = {}
     for media_id, iso in dated:
         d = _dt(iso).date()
-        if d.year >= today.year:
-            continue
-        try:
-            same_day = d.replace(year=today.year)
-        except ValueError:  # 29 February in a non-leap year
-            same_day = date(today.year, 2, 28)
-        if abs((same_day - today).days) <= window_days:
-            out.setdefault(today.year - d.year, []).append(media_id)
+        # The anniversary may fall in last or next year near New Year: 31 Dec 2025 is "1 year ago" on 1 Jan 2027.
+        for year in (today.year - 1, today.year, today.year + 1):
+            years_ago = year - d.year
+            if years_ago >= 1 and abs((_in_year(d, year) - today).days) <= window_days:
+                out.setdefault(years_ago, []).append(media_id)
+                break
     return sorted(out.items())
 
 

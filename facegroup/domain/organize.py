@@ -35,7 +35,10 @@ CATEGORY_PROMPTS: dict[str, list[str]] = {
     ],
 }
 
-_SCREENSHOT_NAME = re.compile(r"(screen\s*shot|screenshot|scrnshot|screen[_ ]?recording|snip|capture)", re.I)
+# Matched against the file name only. "snip" and "capture" must be whole words ("Capture.PNG", "Snip 3.png"),
+# so names like "Captured" or "Snippets" don't count.
+_SCREENSHOT_NAME = re.compile(
+    r"(screen\s*shot|screenshot|scrnshot|screen[_ ]?recording|(?<![a-z])(?:snip|capture)(?![a-z]))", re.I)
 _SCREEN_WIDTHS = {720, 750, 828, 1080, 1125, 1170, 1179, 1242, 1284, 1290, 1320, 1440, 1536, 1600, 1920, 2048,
                   2160, 2560, 2736, 2880, 3024, 3840}
 
@@ -43,7 +46,7 @@ _SCREEN_WIDTHS = {720, 750, 828, 1080, 1125, 1170, 1179, 1242, 1284, 1290, 1320,
 def screenshot_hint(rel_path: str, width: int | None, height: int | None, taken_at: str | None) -> bool:
     """Strong, cheap evidence: a 'Screenshot' file name, or a PNG with no camera date at an exact screen size."""
     name = rel_path.replace("\\", "/").rsplit("/", 1)[-1]
-    if _SCREENSHOT_NAME.search(rel_path):
+    if _SCREENSHOT_NAME.search(name):
         return True
     if name.lower().endswith(".png") and not taken_at and width and height:
         return min(width, height) in _SCREEN_WIDTHS or max(width, height) in _SCREEN_WIDTHS

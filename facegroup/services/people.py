@@ -5,7 +5,9 @@ The user's decisions are constraints, never suggestions: automatic steps only to
 
 from __future__ import annotations
 
+import functools
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -17,6 +19,16 @@ from facegroup.domain.people import (AssignPolicy, calibrate, dedupe_photos, knn
 from facegroup.ports.people import Clusterer, PeopleChange, PeopleStore
 
 log = logging.getLogger(__name__)
+
+
+def _serialized(method):
+    """One people operation at a time. The scheduler's refresh reads a snapshot and writes it back later; without
+    this, a correction made in between (such as "Not this person") could be overwritten by that stale snapshot."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 @dataclass(frozen=True)
@@ -69,9 +81,11 @@ class PeopleService:
         self._part_similarity = part_similarity
         self._learn = learn_policy
         self._policy_cache: tuple[tuple, AssignPolicy] | None = None
+        self._lock = threading.RLock()  # re-entrant: user actions call assign()
 
     # -- automatic steps ------------------------------------------------------------------------------
 
+    @_serialized
     def assign(self) -> int:
         """Re-vote every face nobody decided, against the faces the user confirmed. Returns changes.
 
@@ -94,6 +108,7 @@ class PeopleService:
         log.info("assign: %d of %d undecided faces changed", n, len(face_ids))
         return n
 
+    @_serialized
     def suggest(self) -> int:
         """Cluster the unassigned faces into suggested groups. Returns the number of groups."""
         face_ids, vectors, quality, items = self._store.unassigned_faces(self._model_id)
@@ -117,12 +132,14 @@ class PeopleService:
         log.info("suggest: %d groups from %d unassigned faces", len(groups), len(face_ids))
         return len(groups)
 
+    @_serialized
     def refresh(self) -> tuple[int, int]:
         """After indexing or a correction: re-vote, then regroup what is still unassigned."""
         return self.assign(), self.suggest()
 
     # -- self-improvement: learned strictness ----------------------------------------------------------------
 
+    @_serialized
     def policy(self, ref_people: np.ndarray | None = None, refs: np.ndarray | None = None) -> AssignPolicy:
         """The matching strictness, learned from the user's labels when there is enough evidence.
 
@@ -184,6 +201,7 @@ class PeopleService:
         log.info("policy: threshold %.3f (%s) from %d samples, %d per-person", g, source, len(scores), len(per))
         return policy
 
+    @_serialized
     def learning_stats(self) -> dict:
         """What FaceGroup has learned, for the Check page."""
         self.policy()
@@ -244,18 +262,21 @@ class PeopleService:
         out += sorted(face_qs, key=lambda q: q.score)[:per_kind]
         return out
 
+    @_serialized
     def answer_is_person(self, face_id: int, person_id: int, yes: bool) -> None:
         if yes:
             self.confirm([face_id], person_id)
         else:
             self.reject([face_id], person_id)
 
+    @_serialized
     def answer_same_person(self, a: int, b: int, yes: bool) -> int | None:
         if yes:
             return self.combine([a, b], [])
         self._store.mark_distinct(a, b)
         return None
 
+    @_serialized
     def answer_group_is(self, suggestion_id: int, person_id: int, yes: bool) -> None:
         if yes:
             self.accept_into(suggestion_id, person_id)
@@ -295,6 +316,7 @@ class PeopleService:
 
     # -- user decisions (each one atomic, logged, undoable) -----------------------------------------------
 
+    @_serialized
     def accept(self, suggestion_id: int, name: str = "", exclude: set[int] = frozenset()) -> int:
         faces = [f for f in self._store.suggestion_faces(suggestion_id) if f not in exclude]
         pid = self._store.apply_change(PeopleChange(
@@ -302,6 +324,7 @@ class PeopleService:
         self.assign()
         return pid
 
+    @_serialized
     def accept_into(self, suggestion_id: int, person_id: int, exclude: set[int] = frozenset()) -> int:
         rejected = self._store.rejections()
         faces = [f for f in self._store.suggestion_faces(suggestion_id)
@@ -311,6 +334,7 @@ class PeopleService:
         self.assign()
         return person_id
 
+    @_serialized
     def not_a_person(self, suggestion_id: int | None = None, face_ids: list[int] | None = None) -> int:
         """Cartoons, statues, animals. Only these faces go to the hidden 'Not a person' group: nothing is added to it
         automatically, because a wrong mark would otherwise drag a real person's look-alikes along."""
@@ -325,15 +349,19 @@ class PeopleService:
         self.assign()
         return pid
 
+    @_serialized
     def rename(self, person_id: int, name: str) -> None:
         self._store.apply_change(PeopleChange("rename", to_person=person_id, rename=(person_id, name)))
 
+    @_serialized
     def merge(self, source_id: int, target_id: int) -> None:
         if source_id == target_id:
             return
         self._store.apply_change(PeopleChange("merge", to_person=target_id, delete_persons=[source_id]))
+        self._policy_cache = None  # per-person strictness is keyed by person id, and one id just went away
         self.assign()
 
+    @_serialized
     def combine(self, person_ids: list[int], suggestion_ids: list[int], name: str = "") -> int | None:
         """One person from several people and/or suggested groups, in one undoable step.
 
@@ -359,45 +387,56 @@ class PeopleService:
             change.face_ids = faces
             change.new_person_name = name
         pid = self._store.apply_change(change)
+        self._policy_cache = None  # as in merge
         self.assign()
         return pid
 
+    @_serialized
     def confirm(self, face_ids: list[int], person_id: int) -> None:
         """'Yes, this is them': turns automatic matches into confirmed ones (which then vote)."""
         self._store.apply_change(PeopleChange("confirm", face_ids=face_ids, to_person=person_id))
         self.assign()
 
+    @_serialized
     def move(self, face_ids: list[int], person_id: int) -> None:
         self._store.apply_change(PeopleChange("move", face_ids=face_ids, to_person=person_id))
         self.assign()
 
+    @_serialized
     def split(self, face_ids: list[int], name: str = "") -> int:
         pid = self._store.apply_change(PeopleChange("split", face_ids=face_ids, new_person_name=name))
         self.assign()
         return pid
 
+    @_serialized
     def restore(self, face_ids: list[int]) -> None:
         """Out of 'Not a person' and back to unsorted; they will not be put back there automatically."""
         ignored = self._store.ignored_person_id()
         if ignored is not None:
             self.reject(face_ids, ignored)
 
+    @_serialized
     def reject(self, face_ids: list[int], person_id: int) -> None:
         """'Not this person': unassign and remember, so no automatic step puts them back."""
         self._store.apply_change(PeopleChange(
             "reject", face_ids=face_ids, unassign=True, rejects=[(f, person_id) for f in face_ids]))
         self.assign()
 
+    @_serialized
     def undo(self) -> str | None:
         action = self._store.undo_last()
         if action:
             self.assign()
         return action
 
+    @_serialized
     def forget(self, person_id: int) -> int:
-        """Delete a person and their faces for good. Rescans will not bring them back. Not undoable."""
+        """Delete a person and the faces the user confirmed as them, for good. Rescans will not bring those back.
+        Automatic matches are only unassigned (they may be someone else) and get re-voted. Not undoable."""
         ids = self._store.forget_person(person_id, self._model_id)
         self._on_forget(ids)
+        self._policy_cache = None  # as in merge
+        self.assign()
         return len(ids)
 
 
@@ -409,5 +448,7 @@ def _spread_sample(people: np.ndarray, size: int) -> np.ndarray:
     rng = np.random.default_rng(0)
     groups = {p: np.flatnonzero(people == p) for p in np.unique(people)}
     per = max(1, size // len(groups))
-    picked = [rng.permutation(idx)[:per] for idx in groups.values()]
-    return np.sort(np.concatenate(picked))[:size]
+    picked = np.concatenate([rng.permutation(idx)[:per] for idx in groups.values()])
+    if len(picked) > size:  # more people than the sample holds: a random subset, not the lowest ids
+        picked = rng.choice(picked, size, replace=False)
+    return np.sort(picked)

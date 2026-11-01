@@ -4,7 +4,7 @@
 
 Reports speed per stage, file formats and sizes, failures and why, faces per photo, EXIF coverage, and
 writes contact sheets of detected faces (lowest-confidence first) so false detections are easy to spot.
-Everything is written to %LOCALAPPDATA%\\FaceGroup-eval\\real; the photo folder is only read.
+Everything is written to data\\eval\\real; the photo folder is only read.
 
 The contact sheets show the user's own photos: they are for the user to look at. AI assistants must not
 open them (see CLAUDE.md, Privacy).
@@ -26,12 +26,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from facegroup.config import default_data_dir, default_eval_dir
+
 
 
 def run_scan(folder: Path, data: Path) -> tuple[str, float]:
     env = {**os.environ, "FACEGROUP_DATA_DIR": str(data), "PYTHONIOENCODING": "utf-8",
            "FACEGROUP_KEEP_WORKING_IMAGES": "true"}
-    models = Path(os.environ["LOCALAPPDATA"]) / "FaceGroup" / "models"
+    models = default_data_dir() / "models"
     if not (data / "models").exists() and models.exists():
         data.mkdir(parents=True, exist_ok=True)
         subprocess.run(["cmd", "/c", "mklink", "/J", str(data / "models"), str(models)], capture_output=True)
@@ -95,7 +97,7 @@ def thumbnail_sheet(media_ids, data: Path, out: Path, cell: int = 160, cols: int
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("folder", type=Path)
-    ap.add_argument("--out", type=Path, default=Path(os.environ["LOCALAPPDATA"]) / "FaceGroup-eval" / "real")
+    ap.add_argument("--out", type=Path, default=default_eval_dir() / "real")
     args = ap.parse_args()
     data = args.out / "data"
     if data.exists():

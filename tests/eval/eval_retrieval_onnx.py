@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
 from pathlib import Path
 
@@ -18,9 +17,9 @@ import numpy as np
 from PIL import Image
 
 from facegroup.adapters.models.siglip2_onnx import SigLip2
-from facegroup.config import default_data_dir
+from facegroup.config import default_data_dir, default_eval_dir
 
-BASE = Path(os.environ.get("LOCALAPPDATA", ".")) / "FaceGroup-eval"
+BASE = default_eval_dir()
 
 
 def load_flickr():

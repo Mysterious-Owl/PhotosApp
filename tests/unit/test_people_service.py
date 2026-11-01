@@ -135,6 +135,18 @@ def test_reject_is_permanent_for_automatic_steps(lib):
     assert assigned(lib.app, faces[0]) is None
 
 
+def test_stale_automatic_vote_cannot_undo_a_rejection(lib):
+    # The scheduler's assign() votes from a snapshot; the user rejects before its write lands.
+    people = lib.app.people
+    people.refresh()
+    s = people.suggestions()[0]
+    faces = people.suggestion_faces(s.id)
+    pid = people.accept(s.id, "Ann", exclude={faces[0]})
+    people.reject([faces[0]], pid)
+    lib.app.people_store.write_auto_assignments([(faces[0], pid, 0.9)])  # the stale vote
+    assert assigned(lib.app, faces[0]) is None
+
+
 def test_merge_split_move_rename_and_undo_restore_exact_state(lib):
     people = lib.app.people
     people.refresh()
@@ -294,6 +306,19 @@ def test_forget_deletes_faces_and_rescans_do_not_bring_them_back(make_app, libra
     write_sql(app, "UPDATE job SET state='pending', attempts=0 WHERE stage='faces'")
     app.indexing.run_faces()
     assert count(app, "SELECT COUNT(*) FROM face") == 1
+
+
+def test_forget_keeps_automatic_matches_as_unsorted(lib):
+    people = lib.app.people
+    people.refresh()
+    s = people.suggestions()[0]
+    faces = people.suggestion_faces(s.id)
+    pid = people.accept(s.id, "Ann", exclude={faces[0]})
+    assert assigned(lib.app, faces[0]) == pid  # matched automatically, not confirmed
+    assert people.forget(pid) == len(faces) - 1  # only the confirmed faces are deleted
+    assert count(lib.app, "SELECT COUNT(*) FROM face WHERE id=?", faces[0]) == 1
+    assert assigned(lib.app, faces[0]) is None
+    assert count(lib.app, "SELECT COUNT(*) FROM suppressed_face") == len(faces) - 1
 
 
 ACTIONS = st.lists(

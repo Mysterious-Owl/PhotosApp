@@ -5,8 +5,10 @@ Local-first face grouping and search for your own photo library. Everything runs
 - Plan: [PLAN.md](PLAN.md)
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Design review: [docs/PLAN_REVIEW.md](docs/PLAN_REVIEW.md)
+- Accuracy: [docs/EVALUATION.md](docs/EVALUATION.md)
+- Similar apps and feature ideas: [docs/FEATURE_RESEARCH.md](docs/FEATURE_RESEARCH.md)
 
-**Status:** M1 (indexing), M2 (People) and M3 (search) done. Text in images (OCR) comes in M4.
+**Status:** indexing, People, search, text in images, Tidy (categories, duplicates, bursts) and browsing (timeline, On this day, Events) are done. Video and captions are not built yet.
 
 ## Quick start
 
@@ -16,9 +18,7 @@ Double-click **`FaceGroup.cmd`**. The first time, it installs what it needs (a f
 
 ```powershell
 python -m pip install --user uv
-# Keep the Python environment outside OneDrive (thousands of files should not sync):
-setx UV_PROJECT_ENVIRONMENT "%LOCALAPPDATA%\FaceGroup\venv"
-# open a new terminal, then in the project folder:
+# in the project folder (keep it outside OneDrive; the environment goes in .venv):
 python -m uv sync
 python -m uv run facegroup download-models   # ~275 MB, once
 ```
@@ -32,7 +32,7 @@ python -m uv run facegroup download-models   # ~275 MB, once
 - **Who is this?** shows groups of faces that look like one person. Type a name and Save, or open **Review** to untick faces that belong to someone else. Cartoons, statues and animals: **Not a person**.
 - Once a person has a name, FaceGroup finds them in other photos by itself. Those faces get a dashed outline on the person's page until you confirm them (**Yes, it's them**) or remove them (**Not them**). A face you remove from a person is never put back automatically.
 - **Merge** joins two people. **New person** splits selected faces off. **Undo** reverses the last change.
-- **Forget this person** deletes their faces from FaceGroup for good, and later scans skip them. Photos are never touched.
+- **Forget this person** deletes the faces you confirmed as them from FaceGroup for good, and later scans skip those. Faces FaceGroup matched to them automatically are not deleted (they might be someone else); they go back to unsorted. Photos are never touched.
 - **Photos** (home): your timeline by month with a year/month jump list, **On this day** memories from earlier years, and screenshots/clutter hidden unless you ask. **Events** groups days and trips automatically. Any search can be **saved** and reopened from the search page.
 - **Tidy** (top bar): screenshots, documents, receipts, memes and wallpapers are sorted out, so you can search "Photos only". It also finds copies of the same photo (suggesting which to keep) and folds bursts of similar shots together. Hide, favourite and rate photos. All of this stays inside FaceGroup; files are never changed.
 - **Text in images:** words in screenshots, receipts and documents are searchable ("order shipped", an invoice number). Type people's names in search ("Mom and Dad beach"); if a name is also a normal word, use "search the words instead".
@@ -56,13 +56,13 @@ python -m uv run facegroup retry              # re-queue failed files
 
 ## Data and settings
 
-Everything lives in `%LOCALAPPDATA%\FaceGroup` (never in a synced folder):
+Everything lives in `data\app` in the project folder (git-ignored, and refused if inside OneDrive). Test data goes in `data\eval` and `data\bench`. Set `FACEGROUP_DATA_DIR` to use another folder.
 
 | Path | Contents |
 |---|---|
 | `facegroup.db` | Library index, jobs, faces, embeddings (SQLite) |
-| `cache\thumbs` | Thumbnails |
-| `models\buffalo_l` | Face model files |
+| `cache\thumbs`, `cache\faces` | Thumbnails and face crops |
+| `models\buffalo_l`, `models\siglip2-base` | Face model and search model files |
 | `logs\facegroup.log` | Rotating log |
 | `config.toml` | Optional settings (see `facegroup/config.py`) |
 
@@ -76,12 +76,14 @@ decode_workers = 4
 
 Any setting can also be set as an environment variable, e.g. `FACEGROUP_DEVICE=cpu`.
 
+**Back up `data\app` before cleaning the repo.** It holds your names, groups and labels, and `git clean -x` (or deleting the project folder) removes it. Your photos themselves are never stored there.
+
 ## Development
 
 ```powershell
-python -m uv run pytest                  # unit + pipeline tests (fake face model, ~10 s)
+python -m uv run pytest                  # unit + pipeline tests (fake face model, ~1 min)
 python -m uv run pytest -m integration   # real model on a real group photo (CPU and GPU)
 python -m uv run python scripts/bench.py --count 10000 --kill-after 240   # acceptance benchmark
 ```
 
-Code layout follows the architecture: `facegroup/domain` (pure rules), `ports` (interfaces), `services` (use cases), `adapters` (SQLite, decoders, models), `entrypoints` (CLI), wired together in `bootstrap.py`.
+Code layout follows the architecture: `facegroup/domain` (pure rules), `ports` (interfaces), `services` (use cases), `adapters` (SQLite, decoders, models), `entrypoints` (CLI and web UI), wired together in `bootstrap.py`. See [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md#7-code-layout).

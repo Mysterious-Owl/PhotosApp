@@ -60,6 +60,9 @@ def test_screenshot_hint():
     assert screenshot_hint("x/IMG_1.PNG", 1170, 2532, None)  # phone screen size, no camera date
     assert not screenshot_hint("x/IMG_1.jpg", 4032, 3024, "2023-01-01T10:00:00")
     assert not screenshot_hint("x/photo.png", 1170, 2532, "2023-01-01T10:00:00")  # has a camera date
+    assert screenshot_hint("x/Capture.PNG", 800, 600, None)
+    assert not screenshot_hint("Captured moments/IMG_1.jpg", 4032, 3024, None)  # folder names don't count
+    assert not screenshot_hint("x/Snippets_beach.jpg", 4032, 3024, None)  # nor partial words
 
 
 def test_classify_only_calls_clutter_with_a_clear_lead():

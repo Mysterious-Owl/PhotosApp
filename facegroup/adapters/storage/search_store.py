@@ -2,7 +2,7 @@
 
 Vectors are canonical in item_embedding. For <50k photos, an exact dot product over an in-memory matrix
 (~150 MB at 768 dims) answers a query in milliseconds, so no approximate index (sqlite-vec) is needed yet.
-The matrix reloads only when the table changes.
+The matrix reloads only when the table changes (a trigger-kept counter, migration 0008).
 """
 
 from __future__ import annotations
@@ -82,9 +82,7 @@ class SqliteSearchStore(SqliteBase):
         return " ".join(sql), args
 
     def _matrix(self, model_id: str) -> tuple[np.ndarray, np.ndarray]:
-        stamp = tuple(self._read().execute(
-            "SELECT COUNT(*), COALESCE(SUM(item_id), 0) FROM item_embedding WHERE model_id=?", (model_id,)
-        ).fetchone())
+        stamp = self._read().execute("SELECT n FROM embedding_version").fetchone()[0]
         with self._cache_lock:
             cached = self._cache.get(model_id)
             if cached and cached[0] == stamp:

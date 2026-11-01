@@ -3,7 +3,7 @@
     uv run python scripts/bench.py --count 10000 --kill-after 60
 
 Builds a synthetic library of varied copies of a real group photo (flips, crops, scales, brightness,
-some rotated by EXIF) under %LOCALAPPDATA%\\FaceGroup-bench, outside OneDrive, with its own data folder.
+some rotated by EXIF) under data\\bench, outside OneDrive, with its own data folder.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ import urllib.request
 from pathlib import Path
 
 from PIL import Image, ImageEnhance
+
+from facegroup.config import DATA_ROOT, default_data_dir
 
 SAMPLE_URL = "https://raw.githubusercontent.com/deepinsight/insightface/master/python-package/insightface/data/images/t1.jpg"
 
@@ -86,7 +88,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", type=int, default=10000)
     ap.add_argument("--kill-after", type=float, default=None, help="seconds before hard-killing the first run")
-    ap.add_argument("--base", type=Path, default=Path(os.environ["LOCALAPPDATA"]) / "FaceGroup-bench")
+    ap.add_argument("--base", type=Path, default=DATA_ROOT / "bench")
     ap.add_argument("--fresh", action="store_true", help="delete the bench database first")
     args = ap.parse_args()
 
@@ -100,7 +102,7 @@ def main() -> None:
     data.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "FACEGROUP_DATA_DIR": str(data), "PYTHONIOENCODING": "utf-8"}
     # Reuse the already-downloaded model instead of fetching it again.
-    models = Path(os.environ["LOCALAPPDATA"]) / "FaceGroup" / "models"
+    models = default_data_dir() / "models"
     if models.exists() and not (data / "models").exists():
         os.symlink(models, data / "models", target_is_directory=True) if os.name != "nt" else \
             subprocess.run(["cmd", "/c", "mklink", "/J", str(data / "models"), str(models)], capture_output=True)

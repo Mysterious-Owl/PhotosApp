@@ -83,11 +83,15 @@ class SqlitePeopleStore(SqliteBase):
         def op(c: sqlite3.Connection) -> int:
             n = 0
             for face_id, person_id, score in changes:
-                # The WHERE clause is the guarantee: a face the user decided is never touched.
+                # The WHERE clause is the guarantee: a face the user decided is never touched, a face is never put
+                # into a person the user ruled out for it, and never into a person deleted since the vote.
                 n += c.execute(
                     "UPDATE face SET person_id=?, assigned_by=?, assign_score=? "
-                    "WHERE id=? AND (assigned_by IS NULL OR assigned_by='auto')",
-                    (person_id, "auto" if person_id is not None else None, score, face_id),
+                    "WHERE id=? AND (assigned_by IS NULL OR assigned_by='auto') "
+                    "AND NOT EXISTS (SELECT 1 FROM face_reject r WHERE r.face_id=? AND r.person_id=?) "
+                    "AND (? IS NULL OR EXISTS (SELECT 1 FROM person p WHERE p.id=?))",
+                    (person_id, "auto" if person_id is not None else None, score, face_id,
+                     face_id, person_id, person_id, person_id),
                 ).rowcount
             assigned = [f for f, p, _ in changes if p is not None]
             for chunk in _chunks(assigned):
@@ -369,6 +373,10 @@ class SqlitePeopleStore(SqliteBase):
 
     def forget_person(self, person_id: int, model_id: str) -> list[int]:
         def op(c: sqlite3.Connection) -> list[int]:
+            # Only faces the user confirmed are forgotten. Automatic matches may be someone else, so deleting and
+            # suppressing them could hide another person's look-alikes for good: they go back to unsorted instead.
+            c.execute("UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL "
+                      "WHERE person_id=? AND assigned_by='auto'", (person_id,))
             ids = [r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (person_id,))]
             for chunk in _chunks(ids):
                 ph = _placeholders(len(chunk))

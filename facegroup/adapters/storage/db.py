@@ -27,7 +27,7 @@ def assert_not_synced(path: Path) -> None:
         if resolved == root or root in resolved.parents:
             raise SyncedFolderError(
                 f"Refusing to keep the database in a synced folder ({root}). "
-                "Set data_dir to a local folder such as %LOCALAPPDATA%\\FaceGroup."
+                "Move the project out of OneDrive, or set FACEGROUP_DATA_DIR to a local folder."
             )
 
 

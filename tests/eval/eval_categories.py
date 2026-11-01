@@ -18,10 +18,10 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from facegroup.adapters.models.siglip2_onnx import SigLip2
-from facegroup.config import default_data_dir
+from facegroup.config import default_data_dir, default_eval_dir
 from facegroup.domain.organize import CATEGORY_PROMPTS, PHOTO, classify, prototypes
 
-BASE = Path(os.environ.get("LOCALAPPDATA", ".")) / "FaceGroup-eval"
+BASE = default_eval_dir()
 FONTS = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
 rng = random.Random(0)
 

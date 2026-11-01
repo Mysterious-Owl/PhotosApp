@@ -12,7 +12,7 @@ import numpy as np
 class PeopleChange:
     """One user action, applied atomically and logged with enough state to undo it."""
 
-    action: str  # accept, accept_into, combine, ignore, rename, merge, move, split, reject, confirm
+    action: str  # accept, accept_into, combine, ignore, rename, merge, move, split, reject, not_group, confirm
     face_ids: list[int] = field(default_factory=list)  # picked by the user: they become confirmed for the target
     to_person: int | None = None  # existing target person
     new_person_name: str | None = None  # create a new target person with this name ('' = unnamed)
@@ -113,8 +113,8 @@ class PeopleStore(Protocol):
         ...
 
     def forget_person(self, person_id: int, model_id: str) -> list[int]:
-        """Delete the person and their faces; remember their embeddings so rescans skip them.
-        Returns deleted face ids (for removing crops). Not undoable, by design."""
+        """Delete the person and their confirmed faces; remember those embeddings so rescans skip them. Faces matched
+        automatically become unassigned. Returns deleted face ids (for removing crops). Not undoable, by design."""
         ...
 
     def suppressed_vectors(self, model_id: str) -> np.ndarray: ...

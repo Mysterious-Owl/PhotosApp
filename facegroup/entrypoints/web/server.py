@@ -106,9 +106,9 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
     def photos_page(request: Request, page: int = 0, everything: str = "", month: str = ""):
         if not app.library.roots():
             return RedirectResponse("/people", status_code=303)  # first run: the add-folder screen
-        if month:
-            page = app.browse.month_page(month)
         f = browse_filters(everything)
+        if month:
+            page = app.browse.month_page(f, month)
         return page_(request, "photos.html", tl=app.browse.timeline(f, max(page, 0)),
                      memories=app.browse.memories(f) if page == 0 else [], everything=everything)
 
@@ -378,8 +378,8 @@ def create_app(app, scheduler, token: str, port: int) -> FastAPI:
         scheduler.request_scan()
         return back(request, next)
 
-    @web.get("/events")
-    async def events(request: Request):
+    @web.get("/status/stream")  # not "/events": that is the Events page
+    async def status_stream(request: Request):
         async def stream():
             last = -1
             while not await request.is_disconnected():
