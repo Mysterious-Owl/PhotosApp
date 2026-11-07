@@ -110,7 +110,8 @@ def main() -> None:
     stage_lines = [m.strip() for m in re.findall(r"^\s+(?:derive|faces): .*$", out, re.M)]
 
     db = sqlite3.connect(data / "facegroup.db")
-    q = lambda sql, *a: db.execute(sql, a).fetchall()
+    def q(sql, *a):
+        return db.execute(sql, a).fetchall()
     media = q("SELECT m.rel_path, m.size, m.width, m.height, m.taken_at, m.gps_lat FROM media m")
     exts = collections.Counter(Path(r[0]).suffix.lower() for r in media)
     mp = [r[2] * r[3] / 1e6 for r in media if r[2]]

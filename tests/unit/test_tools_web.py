@@ -154,3 +154,10 @@ def test_browse_returns_the_chosen_folder(web, monkeypatch):
     monkeypatch.setattr(routes, "pick_folder", lambda initial, title: None)
     assert client.post("/tools/pick-folder", data={}).json() == {"path": ""}
     assert 'data-pick="Choose the folder with HEIC photos"' in client.get("/tools/convert").text
+
+
+def test_redirects_stay_on_this_site():
+    from facegroup.entrypoints.web.common import safe_next
+    assert safe_next("/tools/convert?folder=D%3A%5C") == "/tools/convert?folder=D%3A%5C"
+    for bad in ("//evil.example", "/\evil.example", "https://evil.example", "", None):
+        assert safe_next(bad, "/home") == "/home"

@@ -174,7 +174,7 @@ def test_reading_all_photos_is_opt_in(make_app, library_dir):
 
 
 def test_ocr_text_disappears_with_its_photo(make_app, library_dir):
-    p = make_photo(library_dir / "Screenshots" / "Screenshot 2.png", color=(240, 240, 240), size=(1920, 1080), fmt="PNG")
+    make_photo(library_dir / "Screenshots" / "Screenshot 2.png", color=(240, 240, 240), size=(1920, 1080), fmt="PNG")
     FakeReader.texts = {(240, 240, 240): "secret code 777"}
     app = make_app()
     root = app.library.add_root(library_dir)

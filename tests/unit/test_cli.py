@@ -3,7 +3,6 @@
 from typer.testing import CliRunner
 
 from facegroup.entrypoints import cli
-from tests.conftest import make_photo
 
 
 def test_help_lists_every_command():

@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 
 def safe_next(url: str | None, default: str = "/people") -> str:
     """Only same-site relative paths, so a crafted form cannot redirect elsewhere."""
-    if not url or not url.startswith("/") or url.startswith("//"):
+    if not url or not url.startswith("/") or url[1:2] in ("/", "\\"):  # "//x" and "/\x" leave the site
         return default
     return url
 

@@ -36,7 +36,8 @@ def test_hash_pairs_matches_brute_force():
     rng = np.random.default_rng(1)
     h = rng.integers(0, 2**63, 60, dtype=np.uint64)
     h[30:] = h[:30] ^ rng.integers(0, 2**8, 30, dtype=np.uint64)  # up to 8 bits apart
-    ok = lambda x: 8 <= bin(int(x)).count("1") <= 56
+    def ok(x):
+        return 8 <= bin(int(x)).count("1") <= 56
     brute = {(i, j) for i in range(60) for j in range(i + 1, 60)
              if bin(int(h[i]) ^ int(h[j])).count("1") <= 6 and ok(h[i]) and ok(h[j])}
     assert set(hash_pairs(h, 6)) == brute

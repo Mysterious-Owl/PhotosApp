@@ -8,7 +8,6 @@ caught per category. The synthetic images are crude, so their recall is a sanity
 
 from __future__ import annotations
 
-import ast
 import csv
 import os
 import random

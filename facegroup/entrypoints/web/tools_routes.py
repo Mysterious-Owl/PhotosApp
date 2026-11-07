@@ -11,6 +11,7 @@ import os
 import string
 import subprocess
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -79,7 +80,7 @@ def add_tool_routes(web: FastAPI, app, render) -> None:
         src = clean_folder(folder)
         if src is None:
             return tool_form(request, tool, folder, "Not a folder: " + folder)
-        return run_job(kind, title, lambda r: fn(src, r), url or f"/tools/{tool}?folder={src}",
+        return run_job(kind, title, lambda r: fn(src, r), url or f"/tools/{tool}?folder={quote(str(src))}",
                        lambda error: tool_form(request, tool, folder, error))
 
     # -- job progress (polled by the job panel while a job runs) -------------------------------------------

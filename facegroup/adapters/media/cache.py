@@ -36,12 +36,12 @@ class DiskImageCache:
         x1, y1, x2, y2 = bbox
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
         half = max(x2 - x1, y2 - y1) * (0.5 + pad)
-        l, t, r, b = int(cx - half), int(cy - half), int(cx + half), int(cy + half)
-        crop = rgb[max(0, t):min(h, b), max(0, l):min(w, r)]
+        left, top, right, bottom = int(cx - half), int(cy - half), int(cx + half), int(cy + half)
+        crop = rgb[max(0, top):min(h, bottom), max(0, left):min(w, right)]
         if crop.size == 0:
             return
         # Keep the face centred when the square runs off the image edge.
-        crop = cv2.copyMakeBorder(crop, max(0, -t), max(0, b - h), max(0, -l), max(0, r - w),
+        crop = cv2.copyMakeBorder(crop, max(0, -top), max(0, bottom - h), max(0, -left), max(0, right - w),
                                   cv2.BORDER_CONSTANT, value=(24, 24, 24))
         crop = cv2.resize(crop, (size, size), interpolation=cv2.INTER_AREA)
         _write_jpeg(self.face_crop_path(face_id), crop, quality=88)

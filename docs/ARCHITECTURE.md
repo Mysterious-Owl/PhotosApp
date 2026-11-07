@@ -490,18 +490,18 @@ As built (2026-11-01):
 
 ```
 facegroup/
-  domain/        entities, policies, people, search, organize, browse, files   # pure, imports nothing from other packages
+  domain/        entities, policies, people, search, organize, browse, files, clock   # pure, imports nothing from other packages
   ports/         face, media, people, search, store                      # typing.Protocol, domain types only
   services/      library, indexing, media, people, search, organize, browse, tools
   adapters/
-    models/      buffalo_onnx (+ norm_crop alignment), siglip2_onnx, ocr (RapidOCR), download
-    storage/     db, writer, sqlite_store, people_store, search_store, organize_store, tools_store, migrations/0001-0010
-    media/       decoder (Pillow, pillow-heif), files (OneDrive placeholders), cache (thumbs, crops), phash
+    models/      onnx (providers, session options), buffalo_onnx (+ norm_crop alignment), siglip2_onnx, ocr (RapidOCR), download
+    storage/     db, writer, base (connections, id lists, vectors), sqlite_store, people_store, search_store, organize_store, tools_store, migrations/0001-0010
+    media/       decoder (Pillow, pillow-heif), exif_tags, files (OneDrive placeholders), cache (thumbs, crops), phash
     tools/       walk (any folder, hashing), images (HEIC convert, metadata, same-picture check),
                  mover (holding folder), picker (Windows folder dialog)
     clustering.py, instance_lock.py
   entrypoints/   cli.py, scheduler.py, launch.py (window, hand-off), context_menu.py,
-                 web/ (server.py, tools_routes.py, templates/, static/ with HTMX)
+                 web/ (server.py, tools_routes.py, common.py, templates/ with _macros.html, static/ with HTMX)
   bootstrap.py   config -> adapters -> services
   config.py      typed settings (pydantic-settings, data/app/config.toml)
 data/            git-ignored: app/ (database, cache, models, logs), eval/, bench/
