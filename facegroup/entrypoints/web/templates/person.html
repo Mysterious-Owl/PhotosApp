@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ person|label }}{% endblock %}
 {% block main %}
+{% import "_macros.html" as m %}
 <p><a href="/people">← People</a></p>
 {% set hidden_group = person.kind == 'ignored' %}
 {% if hidden_group %}
@@ -23,7 +24,7 @@
       <form method="post" action="/people/{{ person.id }}/merge" class="row">
         <select name="into" aria-label="Merge into" required>
           <option value="">Same person as…</option>
-          {% for p in others %}<option value="{{ p.id }}">{{ p|label }}</option>{% endfor %}
+          {{ m.person_options(others) }}
         </select>
         <button class="btn" type="submit">Merge</button>
       </form>
@@ -53,7 +54,7 @@
     {% if others %}
     <select name="target" aria-label="Move to">
       <option value="">Move to…</option>
-      {% for p in others %}<option value="{{ p.id }}">{{ p|label }}</option>{% endfor %}
+      {{ m.person_options(others) }}
     </select>
     <button class="btn" type="submit" name="action" value="move">Move</button>
     {% endif %}
@@ -66,12 +67,7 @@
     someone else.</p>{% endif %}
   {% for part in parts %}
   <section class="part" id="part{{ loop.index }}">
-    {% if parts|length > 1 %}
-    <h2 class="part-head">Part {{ "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[loop.index0] if loop.index0 < 26 else loop.index }}
-      <span class="count">{{ part|length }} face{{ 's' if part|length != 1 }}</span>
-      <button class="link select-toggle" type="button" data-target="part{{ loop.index }}">Select this part</button>
-    </h2>
-    {% endif %}
+    {{ m.part_head(parts, part, loop.index) }}
   <div class="grid">
     {% for f in part %}
     <label class="face {{ 'auto' if f.assigned_by != 'user' }}" title="{{ 'Found automatically' if f.assigned_by != 'user' else 'Confirmed' }}">

@@ -1,14 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Photos{% endblock %}
 {% block main %}
-{% macro grid(tiles) -%}
-<div class="results">
-  {% for t in tiles %}
-  <a href="/photos/{{ t.media_id }}"><img src="/media/{{ t.media_id }}/thumb.jpg" alt="" loading="lazy">
-    {% if t.stack_size > 1 %}<span class="stackn" title="{{ t.stack_size }} similar shots">+{{ t.stack_size - 1 }}</span>{% endif %}</a>
-  {% endfor %}
-</div>
-{%- endmacro %}
+{% import "_macros.html" as m %}
 
 <div class="row">
   <h1>Photos <span class="count">{{ tl.total }}</span></h1>
@@ -21,7 +14,7 @@
   <h2>On this day</h2>
   <div class="memories">
     {% for years, tiles in memories %}
-    <div class="memory card"><strong>{{ years }} year{{ 's' if years != 1 }} ago</strong>{{ grid(tiles) }}</div>
+    <div class="memory card"><strong>{{ years }} year{{ 's' if years != 1 }} ago</strong>{{ m.grid(tiles) }}</div>
     {% endfor %}
   </div>
 </section>
@@ -33,7 +26,7 @@
     {% for key, label, tiles in tl.months %}
     <section class="month" id="m{{ key }}">
       <h2>{{ label }} <span class="count">{{ tiles|sum(attribute="stack_size") }}</span></h2>
-      {{ grid(tiles) }}
+      {{ m.grid(tiles) }}
     </section>
     {% endfor %}
     <p class="row">

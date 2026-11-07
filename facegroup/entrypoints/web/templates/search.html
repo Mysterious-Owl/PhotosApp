@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Search{% endblock %}
 {% block main %}
+{% import "_macros.html" as m %}
 <form method="get" action="/search" class="filters" role="search">
   <label>Describe the photo
     <input type="search" name="q" value="{{ q }}" placeholder="beach at sunset" size="32" autofocus>
@@ -8,7 +9,7 @@
   <label>Person
     <select name="person">
       <option value="">anyone</option>
-      {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if sel_person == p.id|string }}>{{ p|label }}</option>{% endfor %}
+      {{ m.person_options(people, sel_person) }}
     </select>
   </label>
   <label>From <input type="date" name="date_from" value="{{ date_from }}"></label>

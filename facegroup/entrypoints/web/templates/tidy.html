@@ -33,7 +33,7 @@
         <div><code>{{ m.rel_path }}</code></div>
         <div>{{ m.width }}×{{ m.height }} · {{ (m.size / 1048576)|round(2) }} MB{% if m.hidden %} · hidden{% endif %}</div>
         <form method="post" action="/duplicates/keep">
-          <button class="link" name="keeper" value="{{ m.id }}">{{ 'Keep this, hide the others' }}</button>
+          <button class="link" name="keeper" value="{{ m.id }}">Keep this, hide the others</button>
         </form>
       </div>
       {% endfor %}

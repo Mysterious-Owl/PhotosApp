@@ -92,6 +92,17 @@ def test_convert_and_metadata_jobs(web, tmp_path):
     assert "Converted 0, copied 1" in client.get("/tools/convert").text
 
 
+def test_running_job_shows_progress_and_disables_other_tools(web):
+    from facegroup.services.tools import Job
+    app, client = web
+    app.tools.job = Job("convert", "Convert HEIC", "running", done=1234, total=5000)
+    assert "1,234 of 5,000" in client.get("/tools/job").text
+    for url in ("/tools/convert", "/tools/metadata", "/files/duplicates?view=scan"):
+        assert " disabled>" in client.get(url).text, url
+    r = client.post("/tools/metadata/check", data={"folder": str(Path(__file__).parent)})
+    assert r.status_code == 200 and "Convert HEIC is still running." in r.text
+
+
 def test_job_panel_and_reveal_only_known_paths(web, tmp_path, monkeypatch):
     _, client = web
     assert client.get("/tools/job").headers.get("HX-Refresh") == "true"  # nothing running

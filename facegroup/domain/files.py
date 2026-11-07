@@ -197,3 +197,9 @@ def sibling_folder(folder: str, suffix: str) -> str:
     if str(p) == p.anchor:
         return str(p / f"FaceGroup {suffix}")
     return str(p.with_name(f"{p.name} {suffix}"))
+
+
+def output_folder(output: str, src: str, suffix: str) -> str:
+    """The output folder the user gave (quotes from "Copy as path" removed), else '<src> <suffix>' next to it."""
+    output = output.strip()
+    return output.strip('"') if output else sibling_folder(src, suffix)

@@ -25,7 +25,7 @@
                            ("pairs", "Folder pairs", None), ("groups", "Sets", s.groups if s else None),
                            ("empty", "Empty folders", s.empty if s else None), ("removed", "Moved", None)] %}
     {% if key in ("scan", "removed") or s %}
-    <a href="/files/duplicates?view={{ key }}"{% if view == key %} class="active"{% endif %}>{{ label }}{% if n %}<span class="n">{{ "{:,}".format(n) }}</span>{% endif %}</a>
+    <a href="/files/duplicates?view={{ key }}"{% if view == key %} class="active"{% endif %}>{{ label }}{% if n %}<span class="n">{{ n|num }}</span>{% endif %}</a>
     {% endif %}
   {% endfor %}
 </nav>
@@ -48,22 +48,22 @@
   <label for="min_kb">Ignore files under</label>
   <div class="row"><input type="number" id="min_kb" name="min_kb" value="1" min="0" style="width:90px"> KB</div>
   <div class="wide row">
-    <button type="submit" class="btn primary big"{% if other_job or (job and job.running) %} disabled{% endif %}>Find duplicates</button>
+    <button type="submit" class="btn primary big"{% if busy %} disabled{% endif %}>Find duplicates</button>
     <span class="hint">Only files of the same size are read, and only until they differ. OneDrive files that are
       only in the cloud are never downloaded; they are counted as “not checked”.</span>
   </div>
 </form>
 {% if s %}<p class="meta">Last scan finished {{ s.scan.finished_at[:16].replace("T", " ") }} UTC:
-  {{ "{:,}".format(s.scan.files) }} files, {{ s.scan.bytes | size }}.</p>{% endif %}
+  {{ s.scan.files|num }} files, {{ s.scan.bytes | size }}.</p>{% endif %}
 
 {% elif view == "overview" and s %}
 <div class="stats">
-  <div class="stat"><b>{{ "{:,}".format(s.groups) }}</b><span>sets of identical files</span></div>
-  <div class="stat good"><b>{{ s.ready_bytes | size }}</b><span>{{ "{:,}".format(s.ready_files) }} extra cop{{ "y" if s.ready_files == 1 else "ies" }} ready to move</span></div>
-  <div class="stat warn"><b>{{ "{:,}".format(s.suggested) }}</b><span>set{{ "s" if s.suggested != 1 }} need{{ "s" if s.suggested == 1 }} a decision ({{ s.suggested_bytes | size }})</span></div>
-  {% if s.converted %}<div class="stat warn"><b>{{ "{:,}".format(s.converted) }}</b><span>HEIC photos that also have a PNG copy ({{ s.converted_bytes | size }})</span></div>{% endif %}
-  <div class="stat"><b>{{ "{:,}".format(s.scan.cloud_only) }}</b><span>cloud-only files, not checked</span></div>
-  <div class="stat"><b>{{ "{:,}".format(s.empty) }}</b><span>empty folders</span></div>
+  <div class="stat"><b>{{ s.groups|num }}</b><span>sets of identical files</span></div>
+  <div class="stat good"><b>{{ s.ready_bytes | size }}</b><span>{{ s.ready_files|num }} extra cop{{ "y" if s.ready_files == 1 else "ies" }} ready to move</span></div>
+  <div class="stat warn"><b>{{ s.suggested|num }}</b><span>set{{ "s" if s.suggested != 1 }} need{{ "s" if s.suggested == 1 }} a decision ({{ s.suggested_bytes | size }})</span></div>
+  {% if s.converted %}<div class="stat warn"><b>{{ s.converted|num }}</b><span>HEIC photos that also have a PNG copy ({{ s.converted_bytes | size }})</span></div>{% endif %}
+  <div class="stat"><b>{{ s.scan.cloud_only|num }}</b><span>cloud-only files, not checked</span></div>
+  <div class="stat"><b>{{ s.empty|num }}</b><span>empty folders</span></div>
 </div>
 {% if s.suggested %}
 <p class="card callout">Fastest way through: open <a href="/files/duplicates?view=pairs">Folder pairs</a> and pick which
@@ -77,16 +77,16 @@
     checked again just before it moves, and is left alone if it changed since the scan.</p>
   <div class="checks">
     <label><input type="checkbox" name="include_suggested" value="1"> <span>Also follow the
-      {{ "{:,}".format(s.suggested) }} suggestions <small>(review them in <a href="/files/duplicates?view=groups&show=suggested">Sets</a> first)</small></span></label>
+      {{ s.suggested|num }} suggestions <small>(review them in <a href="/files/duplicates?view=groups&show=suggested">Sets</a> first)</small></span></label>
     {% if s.converted %}
     <label><input type="checkbox" name="include_converted" value="1"> <span>Also move the
-      {{ "{:,}".format(s.converted) }} HEIC originals that have a PNG copy <small>(the PNG is kept: lossless, opens
+      {{ s.converted|num }} HEIC originals that have a PNG copy <small>(the PNG is kept: lossless, opens
       everywhere; <a href="/files/duplicates?view=groups&show=converted">see them</a>)</small></span></label>
     {% endif %}
     <label><input type="checkbox" name="confirm" value="yes" required> <span>I have looked through what will be kept</span></label>
   </div>
-  <p><button type="submit" class="btn primary big"{% if other_job or (job and job.running) %} disabled{% endif %}>
-    Move {{ "{:,}".format(s.ready_files) }} extra cop{{ "y" if s.ready_files == 1 else "ies" }} ({{ s.ready_bytes | size }})</button></p>
+  <p><button type="submit" class="btn primary big"{% if busy %} disabled{% endif %}>
+    Move {{ s.ready_files|num }} extra cop{{ "y" if s.ready_files == 1 else "ies" }} ({{ s.ready_bytes | size }})</button></p>
 </form>
 {% else %}
 <p class="card">No duplicates left in the last scan. 🎉</p>
@@ -96,7 +96,7 @@
 <p class="hint">Folder pairs that share identical files, biggest first. Pick the folder whose copies you want to keep.</p>
 {% for p in pairs %}
 <div class="card group-card">
-  <div class="head"><b>{{ "{:,}".format(p.groups) }} set{{ "s" if p.groups != 1 }}</b>
+  <div class="head"><b>{{ p.groups|num }} set{{ "s" if p.groups != 1 }}</b>
     <span class="muted">{{ p.extra_bytes | size }} · e.g. {{ p.examples | join(", ") }}</span>
     {% if p.winner %}<span class="badge ok">decided</span>{% endif %}</div>
   <div class="pair">
@@ -129,7 +129,7 @@
   {% for key, label in [("all", "All"), ("suggested", "Needs a decision"), ("converted", "HEIC + PNG"), ("ready", "Decided")] %}
   <a class="chip{{ ' active' if show == key }}" href="/files/duplicates?view=groups&show={{ key }}">{{ label }}</a>
   {% endfor %}
-  <span class="meta">{{ "{:,}".format(total) }} sets, biggest first</span>
+  <span class="meta">{{ total|num }} sets, biggest first</span>
 </div>
 {% for gid, digest, d in groups %}
 <div class="card group-card">
@@ -170,11 +170,11 @@
 {% elif view == "empty" and s %}
 {% if empty %}
 <form method="post" action="/files/duplicates/empty" class="card">
-  <p>{{ "{:,}".format(empty | length) }} folders with nothing in them (or only other empty folders). Removing them is
+  <p>{{ (empty | length)|num }} folders with nothing in them (or only other empty folders). Removing them is
     logged, and Restore creates them again.</p>
   <ul class="scroll-list path">{% for f in empty %}<li>{{ f }}</li>{% endfor %}</ul>
   <label class="row"><input type="checkbox" name="confirm" value="yes" required> These can go</label>
-  <p><button class="btn primary">Remove {{ "{:,}".format(empty | length) }} empty folders</button></p>
+  <p><button class="btn primary">Remove {{ (empty | length)|num }} empty folders</button></p>
 </form>
 {% else %}
 <p class="card">No empty folders found{{ " (run a new scan to look again)" if s }}.</p>
@@ -189,14 +189,14 @@
   <tr>
     <td>{{ b.created_at[:16].replace("T", " ") }}</td>
     <td>{{ "Extra copies" if b.kind == "duplicates" else "Empty folders" }}</td>
-    <td class="num">{{ "{:,}".format(b.files) }}</td>
+    <td class="num">{{ b.files|num }}</td>
     <td class="num">{{ b.bytes | size if b.bytes else "" }}</td>
-    <td class="num">{{ "{:,}".format(b.still_removed) }}</td>
+    <td class="num">{{ b.still_removed|num }}</td>
     <td class="num">
       <button class="link" hx-get="/files/duplicates/batch/{{ b.id }}" hx-target="#batch-{{ b.id }}" hx-swap="innerHTML">List</button>
       {% if b.still_removed %}
       <form method="post" action="/files/duplicates/restore/{{ b.id }}" class="inline">
-        <button class="btn sm"{% if other_job or (job and job.running) %} disabled{% endif %}>Restore</button></form>
+        <button class="btn sm"{% if busy %} disabled{% endif %}>Restore</button></form>
       {% endif %}
     </td>
   </tr>

@@ -121,20 +121,6 @@ def hash_pairs(hashes: np.ndarray, max_distance: int = 6) -> list[tuple[int, int
     return sorted(seen)
 
 
-def near_pairs(vectors: np.ndarray, threshold: float, chunk: int = 2048) -> list[tuple[int, int]]:
-    """Index pairs (i < j) whose embeddings are at least `threshold` similar."""
-    pairs: list[tuple[int, int]] = []
-    n = len(vectors)
-    for start in range(0, n, chunk):
-        block = vectors[start:start + chunk] @ vectors.T
-        rows, cols = np.nonzero(block >= threshold)
-        for r, c in zip(rows.tolist(), cols.tolist()):
-            i = start + r
-            if i < c:
-                pairs.append((i, c))
-    return pairs
-
-
 def connected_sets(n: int, pairs: list[tuple[int, int]]) -> list[list[int]]:
     """Union-find: groups of indices linked by pairs (sets of 2+ only)."""
     parent = list(range(n))

@@ -41,7 +41,6 @@ class App:
     store: SqliteStore
     people_store: SqlitePeopleStore
     cache: DiskImageCache
-    decoder: PillowDecoder
     library: LibraryService
     indexing: IndexingService
     people: PeopleService
@@ -195,6 +194,6 @@ def build(settings: Settings, *, analyzer_factory: Callable[[], FaceAnalyzer] | 
 
     organize = OrganizeService(organize_store, search.embed_texts, embed_model_id or "", thumbnail_hash)
     tools_store = SqliteToolsStore(settings.db_path, writer)
-    return App(settings, store, people_store, cache, decoder, library, indexing, people, media, search,
+    return App(settings, store, people_store, cache, library, indexing, people, media, search,
                search_store, organize, organize_store, BrowseService(search_store), tools_store,
                DuplicatesService(tools_store), ToolRunner(), writer, lock)

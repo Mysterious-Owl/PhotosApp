@@ -29,7 +29,7 @@
   <input type="text" id="output" name="output" data-pick="Choose where to save the converted copies" placeholder="Leave empty: a new folder next to it, “… converted”">
 
   <div class="wide row">
-    <button type="submit" class="btn primary big"{% if other_job or (job and job.running) %} disabled{% endif %}>Convert</button>
+    <button type="submit" class="btn primary big"{% if busy %} disabled{% endif %}>Convert</button>
   </div>
 </form>
 {% endblock %}

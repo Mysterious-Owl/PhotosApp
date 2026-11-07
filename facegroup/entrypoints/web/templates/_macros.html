@@ -1,0 +1,24 @@
+{#- Macros shared by several pages: {% import "_macros.html" as m %}. -#}
+
+{% macro grid(tiles) -%}
+<div class="results">
+  {% for t in tiles %}
+  <a href="/photos/{{ t.media_id }}"><img src="/media/{{ t.media_id }}/thumb.jpg" alt="" loading="lazy">
+    {% if t.stack_size > 1 %}<span class="stackn" title="{{ t.stack_size }} similar shots">+{{ t.stack_size - 1 }}</span>{% endif %}</a>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{#- The heading of one part of a group of faces, shown only when the group has more than one part. -#}
+{% macro part_head(parts, part, index) -%}
+{% if parts|length > 1 %}
+<h2 class="part-head">Part {{ "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[index - 1] if index <= 26 else index }}
+  <span class="count">{{ part|length }} face{{ 's' if part|length != 1 }}</span>
+  <button class="link select-toggle" type="button" data-target="part{{ index }}">Select this part</button>
+</h2>
+{% endif %}
+{%- endmacro %}
+
+{% macro person_options(people, selected='') -%}
+{% for p in people %}<option value="{{ p.id }}"{{ ' selected' if selected and selected == p.id|string }}>{{ p|label }}</option>{% endfor %}
+{%- endmacro %}

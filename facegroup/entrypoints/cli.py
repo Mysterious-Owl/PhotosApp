@@ -6,12 +6,13 @@ import signal
 import sys
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 
 import psutil
 import typer
 
-from facegroup.bootstrap import build, setup_logging
+from facegroup.bootstrap import build, face_analyzer_factory, setup_logging
 from facegroup.config import load_settings
 from facegroup.domain.entities import Stage
 
@@ -103,11 +104,17 @@ def scan(
         a.close()
 
 
+def _open_library(with_face_model: bool = False):
+    """The library without loading any model, for the quick read-only commands; closed at the end of `with`."""
+    settings = load_settings()
+    model_id = face_analyzer_factory(settings)[1] if with_face_model else "-"
+    return closing(build(settings, face_model_id=model_id, analyzer_factory=lambda: None))
+
+
 @app.command()
 def status() -> None:
     """Show library and job counts."""
-    a = build(load_settings(), face_model_id="-", analyzer_factory=lambda: None)
-    try:
+    with _open_library() as a:
         s = a.store.status()
         typer.echo("Library folders:")
         for r in a.library.roots():
@@ -120,38 +127,24 @@ def status() -> None:
             typer.echo("Failed files (first 10):")
             for path, stage, error in dead:
                 typer.echo(f"  [{stage}] {path}: {error}")
-    finally:
-        a.close()
 
 
 @app.command()
 def people() -> None:
     """List people and suggested groups."""
-    a = build(load_settings(), face_model_id=_model_id(), analyzer_factory=lambda: None)
-    try:
+    with _open_library(with_face_model=True) as a:
         for p in a.people.people():
             typer.echo(f"  {p.name or f'Face {p.id}':<30} {p.faces:>5} faces ({p.confirmed} confirmed) in {p.photos} photos")
         s = a.people.suggestions()
         typer.echo(f"{len(s)} suggested group(s): " + ", ".join(str(g.size) for g in s[:20]))
         typer.echo("Open the People screen with: facegroup ui")
-    finally:
-        a.close()
-
-
-def _model_id() -> str:
-    from facegroup.bootstrap import face_analyzer_factory
-
-    return face_analyzer_factory(load_settings())[1]
 
 
 @app.command()
 def retry() -> None:
     """Re-queue every failed job."""
-    a = build(load_settings(), face_model_id="-", analyzer_factory=lambda: None)
-    try:
+    with _open_library() as a:
         typer.echo(f"Re-queued {a.store.retry_dead()} job(s). Run: facegroup scan")
-    finally:
-        a.close()
 
 
 @app.command()
@@ -235,10 +228,11 @@ def convert(
     output: Path = typer.Option(None, help="Output folder (default: '<folder> converted' next to it)."),
 ) -> None:
     """Convert HEIC/HEIF photos to PNG or JPEG copies. Originals are not changed."""
-    from facegroup.domain.files import sibling_folder
+    from facegroup.domain.files import output_folder
     from facegroup.services.tools import ConvertOptions, run_convert
 
-    opts = ConvertOptions(folder.resolve(), output or Path(sibling_folder(str(folder.resolve()), "converted")),
+    src = folder.resolve()
+    opts = ConvertOptions(src, Path(output_folder(str(output or ""), str(src), "converted")),
                           "jpg" if jpg else "png", copy_all, overwrite, recurse)
     _run_tool("Convert HEIC", lambda r: run_convert(opts, r))
 
@@ -251,12 +245,12 @@ def metadata(
     output: Path = typer.Option(None, help="Output folder for --clean (default: '<folder> clean' next to it)."),
 ) -> None:
     """Report the metadata in pictures (location, camera, date), or write copies without it."""
-    from facegroup.domain.files import sibling_folder
+    from facegroup.domain.files import output_folder
     from facegroup.services.tools import MetadataOptions, run_metadata_check, run_metadata_clean
 
     src = folder.resolve()
     if clean:
-        opts = MetadataOptions(src, output or Path(sibling_folder(str(src), "clean")), keep_date=keep_date)
+        opts = MetadataOptions(src, Path(output_folder(str(output or ""), str(src), "clean")), keep_date=keep_date)
         _run_tool("Remove metadata", lambda r: run_metadata_clean(opts, r))
     else:
         _run_tool("Check metadata", lambda r: run_metadata_check(src, True, r))

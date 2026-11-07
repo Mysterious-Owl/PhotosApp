@@ -1,12 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ event.title }}{% endblock %}
 {% block main %}
+{% import "_macros.html" as m %}
 <p><a href="/events">← Events</a></p>
 <h1>{{ event.title }} <span class="count">{{ event.count }} photos{% if event.folder %} · {{ event.folder }}{% endif %}</span></h1>
-<div class="results">
-  {% for t in event.tiles %}
-  <a href="/photos/{{ t.media_id }}"><img src="/media/{{ t.media_id }}/thumb.jpg" alt="" loading="lazy">
-    {% if t.stack_size > 1 %}<span class="stackn">+{{ t.stack_size - 1 }}</span>{% endif %}</a>
-  {% endfor %}
-</div>
+{{ m.grid(event.tiles) }}
 {% endblock %}

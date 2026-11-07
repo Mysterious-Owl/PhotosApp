@@ -10,12 +10,12 @@
 {% if job and job.kind == "metadata-check" and not job.running and job.result.tally is defined %}
 {% set t = job.result.tally %}
 <div class="stats">
-  <div class="stat"><b>{{ "{:,}".format(job.result.files) }}</b><span>pictures checked</span></div>
-  <div class="stat {{ 'warn' if t.gps }}"><b>{{ "{:,}".format(t.gps or 0) }}</b><span>with a location (GPS)</span></div>
-  <div class="stat"><b>{{ "{:,}".format(t.exif or 0) }}</b><span>with camera data (EXIF)</span></div>
-  <div class="stat"><b>{{ "{:,}".format(t.date or 0) }}</b><span>with the date taken</span></div>
-  <div class="stat"><b>{{ "{:,}".format((t.xmp or 0) + (t.iptc or 0) + (t.comments or 0)) }}</b><span>with other tags or comments</span></div>
-  <div class="stat good"><b>{{ "{:,}".format(t.clean or 0) }}</b><span>already clean</span></div>
+  <div class="stat"><b>{{ job.result.files|num }}</b><span>pictures checked</span></div>
+  <div class="stat {{ 'warn' if t.gps }}"><b>{{ (t.gps or 0)|num }}</b><span>with a location (GPS)</span></div>
+  <div class="stat"><b>{{ (t.exif or 0)|num }}</b><span>with camera data (EXIF)</span></div>
+  <div class="stat"><b>{{ (t.date or 0)|num }}</b><span>with the date taken</span></div>
+  <div class="stat"><b>{{ ((t.xmp or 0) + (t.iptc or 0) + (t.comments or 0))|num }}</b><span>with other tags or comments</span></div>
+  <div class="stat good"><b>{{ (t.clean or 0)|num }}</b><span>already clean</span></div>
 </div>
 {% if job.result.with_gps %}
 <details class="card"><summary>Pictures that reveal where they were taken ({{ job.result.with_gps | length }})</summary>
@@ -41,7 +41,6 @@
   <input type="text" id="output" name="output" data-pick="Choose where to save the clean copies" placeholder="Leave empty: a new folder next to it, “… clean”">
 
   <div class="wide row">
-    {% set busy = other_job or (job and job.running) %}
     <button type="submit" class="btn big"{% if busy %} disabled{% endif %}>Check only</button>
     <button type="submit" class="btn primary big" formaction="/tools/metadata/clean"{% if busy %} disabled{% endif %}>Make clean copies</button>
     <span class="hint">Pictures are turned upright first, so nothing appears sideways once the rotation tag is gone.</span>

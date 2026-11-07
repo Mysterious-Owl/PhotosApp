@@ -10,7 +10,7 @@
   {% if job.total %}
   <div class="progress" role="progressbar" aria-valuenow="{{ job.percent }}" aria-valuemin="0" aria-valuemax="100">
     <div style="width: {{ job.percent }}%"></div></div>
-  <div class="meta">{{ "{:,}".format(job.done) }} of {{ "{:,}".format(job.total) }}</div>
+  <div class="meta">{{ job.done|num }} of {{ job.total|num }}</div>
   {% else %}
   <div class="progress indeterminate"><div></div></div>
   {% endif %}

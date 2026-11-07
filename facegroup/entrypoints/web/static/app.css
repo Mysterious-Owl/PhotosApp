@@ -48,7 +48,7 @@ h1 { font-size: 1.35rem; margin: 6px 0 6px; }
 h2 { font-size: 1.05rem; }
 .count { color: var(--muted); font-weight: 400; font-size: .95rem; margin-left: 6px; }
 .hint, .meta, .muted { color: var(--muted); font-size: .9rem; }
-code, .mono { font-family: var(--mono); font-size: .85em; }
+code { font-family: var(--mono); font-size: .85em; }
 .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .hidden { display: none !important; }
 
@@ -241,7 +241,6 @@ form.inline { display: inline; }
 
 /* ---------- tools: duplicate files, convert, metadata ---------- */
 .page-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-.page-head p { margin: 0; }
 .lede { color: var(--muted); max-width: 760px; margin: 0 0 16px; }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 14px 0 16px; flex-wrap: wrap; }
 .tabs a { padding: 8px 12px; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent;

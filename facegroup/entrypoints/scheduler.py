@@ -60,10 +60,6 @@ class Scheduler:
         with self._lock:
             return dict(self._status, version=self.version)
 
-    @property
-    def busy(self) -> bool:
-        return self.status["state"] not in ("idle", "error")
-
     def request_scan(self) -> None:
         self._wake.set()
 
