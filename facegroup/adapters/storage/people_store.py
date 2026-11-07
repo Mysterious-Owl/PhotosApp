@@ -7,19 +7,14 @@ import sqlite3
 
 import numpy as np
 
-from facegroup.adapters.storage.sqlite_store import SqliteBase, _placeholders, iso
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, iso, json_ids, stack_vectors
 from facegroup.ports.people import FaceRow, PeopleChange, PersonSummary, SuggestionSummary
+
+_CLEAR_FACE = "UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL WHERE "
 
 
 def _stack(blobs: list[bytes]) -> np.ndarray:
-    if not blobs:
-        return np.zeros((0, 512), np.float32)
-    return np.stack([np.frombuffer(b, dtype=np.float32) for b in blobs])
-
-
-def _chunks(ids: list[int], size: int = 500):
-    for i in range(0, len(ids), size):
-        yield ids[i:i + size]
+    return stack_vectors(blobs, 512)  # ArcFace dimension, so empty results still have the right shape
 
 
 class SqlitePeopleStore(SqliteBase):
@@ -57,10 +52,10 @@ class SqlitePeopleStore(SqliteBase):
 
     def face_vectors(self, face_ids: list[int], model_id: str) -> tuple[list[int], np.ndarray]:
         if not face_ids:
-            return [], np.zeros((0, 512), np.float32)
+            return [], _stack([])
         rows = self._read().execute(
-            "SELECT face_id, vector FROM face_embedding WHERE model_id=? AND face_id IN (SELECT value FROM json_each(?))",
-            (model_id, json.dumps([int(f) for f in face_ids])),
+            f"SELECT face_id, vector FROM face_embedding WHERE model_id=? AND face_id IN {JSON_IDS}",
+            (model_id, json_ids(face_ids)),
         ).fetchall()
         return [r[0] for r in rows], _stack([r[1] for r in rows])
 
@@ -94,8 +89,7 @@ class SqlitePeopleStore(SqliteBase):
                      face_id, person_id, person_id, person_id),
                 ).rowcount
             assigned = [f for f, p, _ in changes if p is not None]
-            for chunk in _chunks(assigned):
-                c.execute(f"DELETE FROM suggestion_face WHERE face_id IN ({_placeholders(len(chunk))})", chunk)
+            c.execute(f"DELETE FROM suggestion_face WHERE face_id IN {JSON_IDS}", (json_ids(assigned),))
             return n
 
         return self._write(op)
@@ -234,56 +228,41 @@ class SqlitePeopleStore(SqliteBase):
             for pid in ch.delete_persons:
                 merged += [r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (pid,)) if r[0] not in picked]
 
-            before: dict[int, list] = {}
-            for chunk in _chunks(explicit + merged):
-                for r in c.execute(
-                    f"SELECT id, person_id, assigned_by, assign_score FROM face WHERE id IN ({_placeholders(len(chunk))})",
-                    chunk,
-                ):
-                    before[r[0]] = [r[1], r[2], r[3]]
+            before = {r[0]: [r[1], r[2], r[3]] for r in c.execute(
+                f"SELECT id, person_id, assigned_by, assign_score FROM face WHERE id IN {JSON_IDS}",
+                (json_ids(explicit + merged),))}
 
             if merged and target is not None:
                 # A face the user said is "not <target>" must not arrive in target with the rest of its person.
                 # The specific decision beats the bulk one; such faces become unassigned instead.
-                vetoed = set()
-                for chunk in _chunks(merged):
-                    vetoed |= {r[0] for r in c.execute(
-                        f"SELECT face_id FROM face_reject WHERE person_id=? AND face_id IN ({_placeholders(len(chunk))})",
-                        (target, *chunk))}
+                vetoed = {r[0] for r in c.execute(
+                    f"SELECT face_id FROM face_reject WHERE person_id=? AND face_id IN {JSON_IDS}",
+                    (target, json_ids(merged)))}
                 if vetoed:
-                    v = sorted(vetoed)
-                    c.execute(f"UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL "
-                              f"WHERE id IN ({_placeholders(len(v))})", v)
+                    c.execute(_CLEAR_FACE + f"id IN {JSON_IDS}", (json_ids(vetoed),))
                     merged = [f for f in merged if f not in vetoed]
-                for chunk in _chunks(merged):
-                    c.execute(f"UPDATE face SET person_id=? WHERE id IN ({_placeholders(len(chunk))})", (target, *chunk))
+                c.execute(f"UPDATE face SET person_id=? WHERE id IN {JSON_IDS}", (target, json_ids(merged)))
 
-            for chunk in _chunks(explicit):
-                ph = _placeholders(len(chunk))
-                if ch.unassign:
-                    c.execute(f"UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL WHERE id IN ({ph})", chunk)
-                elif target is not None:
-                    c.execute(f"UPDATE face SET person_id=?, assigned_by='user', assign_score=NULL WHERE id IN ({ph})",
-                              (target, *chunk))
-            if target is not None and not ch.unassign:
-                for chunk in _chunks(explicit + merged):
-                    c.execute(f"DELETE FROM suggestion_face WHERE face_id IN ({_placeholders(len(chunk))})", chunk)
+            if ch.unassign:
+                c.execute(_CLEAR_FACE + f"id IN {JSON_IDS}", (json_ids(explicit),))
+            elif target is not None:
+                c.execute(f"UPDATE face SET person_id=?, assigned_by='user', assign_score=NULL WHERE id IN {JSON_IDS}",
+                          (target, json_ids(explicit)))
+                c.execute(f"DELETE FROM suggestion_face WHERE face_id IN {JSON_IDS}", (json_ids(explicit + merged),))
 
             face_ids = explicit
             rejects = list(ch.rejects)
             deleted_rejects = []
             if target is not None and not ch.unassign and face_ids:
                 # The user explicitly put these faces in `target`: that overrides an earlier "not this person".
-                for chunk in _chunks(face_ids):
-                    ph = _placeholders(len(chunk))
-                    deleted_rejects += [tuple(r) for r in c.execute(
-                        f"SELECT face_id, person_id FROM face_reject WHERE person_id=? AND face_id IN ({ph})",
-                        (target, *chunk))]
-                    c.execute(f"DELETE FROM face_reject WHERE person_id=? AND face_id IN ({ph})", (target, *chunk))
+                args = (target, json_ids(face_ids))
+                deleted_rejects += [tuple(r) for r in c.execute(
+                    f"SELECT face_id, person_id FROM face_reject WHERE person_id=? AND face_id IN {JSON_IDS}", args)]
+                c.execute(f"DELETE FROM face_reject WHERE person_id=? AND face_id IN {JSON_IDS}", args)
             if ch.delete_persons:
-                ph = _placeholders(len(ch.delete_persons))
                 merged_rejects = [tuple(r) for r in c.execute(
-                    f"SELECT face_id, person_id FROM face_reject WHERE person_id IN ({ph})", ch.delete_persons)]
+                    f"SELECT face_id, person_id FROM face_reject WHERE person_id IN {JSON_IDS}",
+                    (json_ids(ch.delete_persons),))]
                 deleted_rejects += merged_rejects  # cascade-deleted with the person; restored by undo
                 if target is not None:  # "not Mom" stays true after Mom absorbs a duplicate...
                     in_target = {r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (target,))}
@@ -375,17 +354,11 @@ class SqlitePeopleStore(SqliteBase):
         def op(c: sqlite3.Connection) -> list[int]:
             # Only faces the user confirmed are forgotten. Automatic matches may be someone else, so deleting and
             # suppressing them could hide another person's look-alikes for good: they go back to unsorted instead.
-            c.execute("UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL "
-                      "WHERE person_id=? AND assigned_by='auto'", (person_id,))
+            c.execute(_CLEAR_FACE + "person_id=? AND assigned_by='auto'", (person_id,))
             ids = [r[0] for r in c.execute("SELECT id FROM face WHERE person_id=?", (person_id,))]
-            for chunk in _chunks(ids):
-                ph = _placeholders(len(chunk))
-                c.execute(
-                    f"INSERT INTO suppressed_face(model_id, vector) "
-                    f"SELECT model_id, vector FROM face_embedding WHERE face_id IN ({ph})",
-                    chunk,
-                )
-                c.execute(f"DELETE FROM face WHERE id IN ({ph})", chunk)
+            c.execute(f"INSERT INTO suppressed_face(model_id, vector) "
+                      f"SELECT model_id, vector FROM face_embedding WHERE face_id IN {JSON_IDS}", (json_ids(ids),))
+            c.execute(f"DELETE FROM face WHERE id IN {JSON_IDS}", (json_ids(ids),))
             c.execute("DELETE FROM person WHERE id=?", (person_id,))
             # Undo history must not be able to resurrect forgotten faces.
             c.execute("UPDATE people_event SET undone=1 WHERE undone=0")

@@ -17,9 +17,9 @@ from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
+from facegroup.adapters.storage.base import iso, utc_now
 from facegroup.adapters.tools import images, mover, walk
 from facegroup.domain.files import (
     CONVERTED_PREFIX,
@@ -114,7 +114,7 @@ class ToolRunner:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return iso(utc_now())
 
 
 def _files(folder: Path, extensions: frozenset[str] | None, recurse: bool, runner: ToolRunner) -> list[Path]:

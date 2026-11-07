@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 
 import numpy as np
 
-from facegroup.adapters.storage.sqlite_store import SqliteBase
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, json_ids
+
+_SAME_STACK = "stack_id=(SELECT stack_id FROM stack_member WHERE media_id=?)"
 
 
 class SqliteOrganizeStore(SqliteBase):
@@ -23,24 +24,15 @@ class SqliteOrganizeStore(SqliteBase):
             "WHERE m.file_state='active' AND m.width IS NOT NULL ORDER BY m.id",
             (model_id,),
         ).fetchall()
-        out, vecs, dim = [], [], 0
-        for r in rows:
+        dim = next((len(r["vec"]) // 4 for r in rows if r["vec"] is not None), 0)
+        out, matrix = [], np.zeros((len(rows), dim or 1), np.float32)
+        for i, r in enumerate(rows):
             d = dict(r)
             v = d.pop("vec")
+            d["has_vec"] = v is not None
             if v is not None:
-                arr = np.frombuffer(v, np.float32)
-                dim = len(arr)
-            else:
-                arr = None
-            vecs.append(arr)
+                matrix[i] = np.frombuffer(v, np.float32)
             out.append(d)
-        matrix = np.zeros((len(out), dim or 1), np.float32)
-        for i, v in enumerate(vecs):
-            if v is not None:
-                matrix[i] = v
-                out[i]["has_vec"] = True
-            else:
-                out[i]["has_vec"] = False
         return out, matrix
 
     def set_phashes(self, values: list[tuple[int, int]]) -> None:
@@ -115,21 +107,19 @@ class SqliteOrganizeStore(SqliteBase):
 
     def set_stack_top(self, media_id: int) -> None:
         def op(c: sqlite3.Connection) -> None:
-            members = [r[0] for r in c.execute(
-                "SELECT media_id FROM stack_member WHERE stack_id=(SELECT stack_id FROM stack_member WHERE media_id=?)",
-                (media_id,))]
+            members = [r[0] for r in c.execute(f"SELECT media_id FROM stack_member WHERE {_SAME_STACK}", (media_id,))]
             if not members:
                 return
-            c.execute(f"DELETE FROM stack_pick WHERE media_id IN ({','.join('?' * len(members))})", members)
+            ids = json_ids(members)
+            c.execute(f"DELETE FROM stack_pick WHERE media_id IN {JSON_IDS}", (ids,))
             c.execute("INSERT INTO stack_pick(media_id) VALUES(?)", (media_id,))
-            c.execute(f"UPDATE stack_member SET top=(media_id=?) WHERE media_id IN ({','.join('?' * len(members))})",
-                      (media_id, *members))
+            c.execute(f"UPDATE stack_member SET top=(media_id=?) WHERE media_id IN {JSON_IDS}", (media_id, ids))
         self._write(op)
 
     def stack_of(self, media_id: int) -> list[tuple[int, bool]]:
         rows = self._read().execute(
-            "SELECT media_id, top FROM stack_member WHERE stack_id=(SELECT stack_id FROM stack_member WHERE media_id=?) "
-            "ORDER BY top DESC, media_id", (media_id,)).fetchall()
+            f"SELECT media_id, top FROM stack_member WHERE {_SAME_STACK} ORDER BY top DESC, media_id",
+            (media_id,)).fetchall()
         return [(r[0], bool(r[1])) for r in rows]
 
     # -- per-photo flags ------------------------------------------------------------------------------------
@@ -149,8 +139,7 @@ class SqliteOrganizeStore(SqliteBase):
         if not sets or not media_ids:
             return
         self._write(lambda c: c.execute(
-            f"UPDATE media SET {', '.join(sets)} WHERE id IN (SELECT value FROM json_each(?))",
-            (*args, json.dumps([int(m) for m in media_ids]))))
+            f"UPDATE media SET {', '.join(sets)} WHERE id IN {JSON_IDS}", (*args, json_ids(media_ids))))
 
     def flags(self, media_id: int) -> dict:
         r = self._read().execute(

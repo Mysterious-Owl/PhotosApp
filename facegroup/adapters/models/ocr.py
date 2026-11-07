@@ -16,7 +16,7 @@ class RapidOcrReader:
     def __init__(self, device: str = "cpu", min_score: float = 0.5, det_side: int = 960) -> None:
         from rapidocr import RapidOCR
 
-        from facegroup.adapters.models.buffalo_onnx import choose_providers
+        from facegroup.adapters.models.onnx import choose_providers
 
         self.provider = choose_providers(device)[0]
         use_dml = self.provider == "DmlExecutionProvider"

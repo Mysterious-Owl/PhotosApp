@@ -9,15 +9,11 @@ import numpy as np
 import pillow_heif
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from facegroup.adapters.media.exif_tags import EXIF_DATETIME, EXIF_DATETIME_ORIGINAL, EXIF_IFD, GPS_IFD
 from facegroup.adapters.media.files import hash_bytes
 from facegroup.ports.media import DecodedImage, PermanentMediaError
 
 pillow_heif.register_heif_opener()
-
-_EXIF_IFD = 0x8769
-_GPS_IFD = 0x8825
-_DATETIME_ORIGINAL = 36867
-_DATETIME = 306
 
 
 class PillowDecoder:
@@ -57,7 +53,7 @@ class PillowDecoder:
 
 
 def _taken_at(exif: Image.Exif) -> str | None:
-    raw = exif.get_ifd(_EXIF_IFD).get(_DATETIME_ORIGINAL) or exif.get(_DATETIME)
+    raw = exif.get_ifd(EXIF_IFD).get(EXIF_DATETIME_ORIGINAL) or exif.get(EXIF_DATETIME)
     if not isinstance(raw, str) or len(raw) < 19:
         return None
     date, _, time = raw.strip().partition(" ")
@@ -69,7 +65,7 @@ def _taken_at(exif: Image.Exif) -> str | None:
 
 def _gps(exif: Image.Exif) -> tuple[float, float] | None:
     try:
-        g = exif.get_ifd(_GPS_IFD)
+        g = exif.get_ifd(GPS_IFD)
         if not g or 2 not in g or 4 not in g:
             return None
         lat = _dms(g[2]) * (-1 if g.get(1) == "S" else 1)

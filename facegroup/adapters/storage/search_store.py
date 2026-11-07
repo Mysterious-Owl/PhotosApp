@@ -7,13 +7,12 @@ The matrix reloads only when the table changes (a trigger-kept counter, migratio
 
 from __future__ import annotations
 
-import json
 import re
 import threading
 
 import numpy as np
 
-from facegroup.adapters.storage.sqlite_store import SqliteBase
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, json_ids, stack_vectors
 from facegroup.ports.search import SearchFilters
 
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -91,8 +90,7 @@ class SqliteSearchStore(SqliteBase):
                 "SELECT item_id, vector FROM item_embedding WHERE model_id=? ORDER BY item_id", (model_id,)
             ).fetchall()
             ids = np.array([r[0] for r in rows], np.int64)
-            mat = (np.stack([np.frombuffer(r[1], np.float32) for r in rows]) if rows
-                   else np.zeros((0, 1), np.float32))
+            mat = stack_vectors([r[1] for r in rows], 1)
             self._cache[model_id] = (stamp, ids, mat)
             return ids, mat
 
@@ -106,32 +104,24 @@ class SqliteSearchStore(SqliteBase):
         return item_ids[found], mat[pos[found]]
 
     def keyword_media(self, query: str, media_ids: np.ndarray | None, limit: int) -> list[int]:
+        """Photos whose folder and file names match every word of the query, best first."""
+        return self._fts_media("media_text", query, media_ids, limit)
+
+    def text_media(self, query: str, media_ids: np.ndarray | None, limit: int) -> list[int]:
+        """Photos whose text (OCR) matches every word of the query, best first."""
+        return self._fts_media("ocr_fts", query, media_ids, limit)
+
+    def _fts_media(self, table: str, query: str, media_ids: np.ndarray | None, limit: int) -> list[int]:
         words = _WORD.findall(query.lower())
         if not words:
             return []
         # Every word must match (as a prefix: "goa" finds "goa2023"); quoted so user text is never FTS syntax.
         match = " AND ".join(f'"{w}"*' for w in words)
         rows = self._read().execute(
-            "SELECT media_id FROM media_text WHERE media_text MATCH ? ORDER BY rank LIMIT ?",
+            f"SELECT media_id FROM {table} WHERE {table} MATCH ? ORDER BY rank LIMIT ?",
             (match, limit * 4 if media_ids is not None else limit),
         ).fetchall()
-        hits = [int(r[0]) for r in rows]
-        if media_ids is not None:
-            allowed = set(media_ids.tolist())
-            hits = [m for m in hits if m in allowed]
-        return hits[:limit]
-
-    def text_media(self, query: str, media_ids: np.ndarray | None, limit: int) -> list[int]:
-        """Photos whose text (OCR) matches every word of the query, best first."""
-        words = _WORD.findall(query.lower())
-        if not words:
-            return []
-        match = " AND ".join(f'"{w}"*' for w in words)
-        rows = self._read().execute(
-            "SELECT media_id FROM ocr_fts WHERE ocr_fts MATCH ? ORDER BY rank LIMIT ?",
-            (match, limit * 4 if media_ids is not None else limit),
-        ).fetchall()
-        hits = list(dict.fromkeys(int(r[0]) for r in rows))
+        hits = list(dict.fromkeys(int(r[0]) for r in rows))  # ocr_fts has a row per item, so a photo can repeat
         if media_ids is not None:
             allowed = set(media_ids.tolist())
             hits = [m for m in hits if m in allowed]
@@ -147,11 +137,9 @@ class SqliteSearchStore(SqliteBase):
     def newest_first(self, media_ids: np.ndarray) -> list[int]:
         if len(media_ids) == 0:
             return []
-        # One JSON parameter instead of a temp table: read connections are query-only.
         rows = self._read().execute(
-            "SELECT m.id FROM media m WHERE m.id IN (SELECT value FROM json_each(?)) "
-            "ORDER BY COALESCE(m.taken_at, strftime('%Y-%m-%dT%H:%M:%S', m.mtime, 'unixepoch')) DESC, m.id DESC",
-            (json.dumps([int(m) for m in media_ids]),),
+            f"SELECT m.id FROM media m WHERE m.id IN {JSON_IDS} ORDER BY {DATE_SQL} DESC, m.id DESC",
+            (json_ids(media_ids),),
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -178,8 +166,7 @@ class SqliteSearchStore(SqliteBase):
             return {}
         rows = self._read().execute(
             "SELECT s.media_id, s.stack_id, s.top, (SELECT COUNT(*) FROM stack_member x WHERE x.stack_id=s.stack_id) "
-            "FROM stack_member s WHERE s.media_id IN (SELECT value FROM json_each(?))",
-            (json.dumps([int(m) for m in media_ids]),)).fetchall()
+            f"FROM stack_member s WHERE s.media_id IN {JSON_IDS}", (json_ids(media_ids),)).fetchall()
         return {r[0]: (r[1], bool(r[2]), r[3]) for r in rows}
 
     # -- saved searches --------------------------------------------------------------------------------
@@ -197,8 +184,7 @@ class SqliteSearchStore(SqliteBase):
 
     def folder_of(self, media_ids: list[int]) -> dict[int, str]:
         rows = self._read().execute(
-            "SELECT id, rel_path FROM media WHERE id IN (SELECT value FROM json_each(?))",
-            (json.dumps([int(m) for m in media_ids]),)).fetchall()
+            f"SELECT id, rel_path FROM media WHERE id IN {JSON_IDS}", (json_ids(media_ids),)).fetchall()
         return {r[0]: r[1] for r in rows}
 
     def embedding_coverage(self, model_id: str) -> tuple[int, int]:

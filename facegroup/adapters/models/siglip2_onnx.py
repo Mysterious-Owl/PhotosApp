@@ -16,8 +16,8 @@ import onnxruntime as ort
 from PIL import Image
 from tokenizers import Tokenizer
 
-from facegroup.adapters.models.buffalo_onnx import choose_providers
 from facegroup.adapters.models.download import download
+from facegroup.adapters.models.onnx import choose_providers, session_options
 
 log = logging.getLogger(__name__)
 ort.set_default_logger_severity(3)
@@ -62,14 +62,8 @@ class SigLip2:
         self._load_lock = threading.Lock()  # warm-up, searches and organize can all ask first
 
     def _session(self, name: str) -> ort.InferenceSession:
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
-        if self._threads:
-            opts.intra_op_num_threads = self._threads
-        if self._providers[0] == "DmlExecutionProvider":
-            opts.enable_mem_pattern = False
-            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        return ort.InferenceSession(str(self._dir / _file(name, self._variant)), opts, providers=self._providers)
+        return ort.InferenceSession(str(self._dir / _file(name, self._variant)),
+                                    session_options(self._providers, self._threads), providers=self._providers)
 
     # Each side loads on first use, so the web process only ever holds the text side.
 

@@ -20,6 +20,7 @@ import numpy as np
 import onnxruntime as ort
 
 from facegroup.adapters.models.download import download
+from facegroup.adapters.models.onnx import choose_providers, session_options
 from facegroup.domain.entities import DetectedFace
 
 log = logging.getLogger(__name__)
@@ -111,32 +112,15 @@ def nms(boxes: np.ndarray, scores: np.ndarray, threshold: float) -> list[int]:
     return keep
 
 
-def choose_providers(device: str) -> list[str]:
-    """'auto' prefers DirectML (any Windows GPU, including integrated) and falls back to the CPU."""
-    available = ort.get_available_providers()
-    if device == "cpu":
-        return ["CPUExecutionProvider"]
-    if device == "directml" and "DmlExecutionProvider" not in available:
-        raise RuntimeError("DirectML requested but onnxruntime-directml is not installed")
-    if device in ("auto", "directml") and "DmlExecutionProvider" in available:
-        return ["DmlExecutionProvider", "CPUExecutionProvider"]
-    return ["CPUExecutionProvider"]
-
-
 class BuffaloL:
     detector_id = "scrfd_10g@buffalo_l"
     model_id = "arcface_r50_w600k@buffalo_l"
 
     def __init__(self, model_dir: Path, threads: int = 0, device: str = "auto", det_size: int = 640,
                  det_threshold: float = 0.5, nms_threshold: float = 0.4) -> None:
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3  # the recogniser's output shape metadata says batch 1; batches work on CPU
-        if threads:  # 0 lets ONNX Runtime pick (best on hybrid P/E-core CPUs)
-            opts.intra_op_num_threads = threads
         providers = choose_providers(device)
-        if providers[0] == "DmlExecutionProvider":
-            opts.enable_mem_pattern = False  # required by DirectML
-            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        # Quiet logs: the recogniser's output shape metadata says batch 1; batches work on CPU.
+        opts = session_options(providers, threads)
         self.provider = providers[0]
         self._det = ort.InferenceSession(str(model_dir / DET_FILE), opts, providers=providers)
         self._rec = ort.InferenceSession(str(model_dir / REC_FILE), opts, providers=providers)

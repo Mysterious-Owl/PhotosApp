@@ -2,69 +2,24 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
-import threading
-from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 
-from facegroup.adapters.storage.db import connect
-from facegroup.adapters.storage.writer import DbWriter
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, iso, json_ids
 from facegroup.domain.entities import DetectedFace, FileState, Job, JobState, MediaRecord, Stage
 from facegroup.domain.policies import match_boxes
 from facegroup.ports.store import ImageMeta, Root, ScanPlan
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+def _root(r: sqlite3.Row) -> Root:
+    return Root(r["id"], Path(r["path"]), bool(r["fetch_online_only"]))
 
 
-def iso(t: datetime) -> str:
-    return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _placeholders(n: int) -> str:
-    return ",".join("?" * n)
-
-
-_JSON_IDS = "(SELECT value FROM json_each(?))"
-
-
-class SqliteBase:
-    """Per-thread read-only connections for reads; every write goes through the single DbWriter."""
-
-    def __init__(self, db_path: Path, writer: DbWriter, now: Callable[[], datetime] = utc_now) -> None:
-        self._db_path = db_path
-        self._writer = writer
-        self._now = now
-        self._local = threading.local()
-        self._all_reads: list[sqlite3.Connection] = []
-        self._lock = threading.Lock()
-
-    def _read(self) -> sqlite3.Connection:
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = connect(self._db_path, read_only=True)
-            self._local.conn = conn
-            with self._lock:
-                self._all_reads.append(conn)
-        return conn
-
-    def _write(self, fn):
-        return self._writer.submit(fn)
-
-    def close(self) -> None:
-        with self._lock:
-            for conn in self._all_reads:
-                try:
-                    conn.close()
-                except sqlite3.ProgrammingError:
-                    pass  # already closed
-            self._all_reads.clear()
-        self._local = threading.local()
+def _mark_done(c: sqlite3.Connection, job_id: int) -> None:
+    c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job_id,))
 
 
 class SqliteStore(SqliteBase):
@@ -80,8 +35,7 @@ class SqliteStore(SqliteBase):
                 "ON CONFLICT(path) DO UPDATE SET fetch_online_only=excluded.fetch_online_only, enabled=1",
                 (key, int(fetch_online_only)),
             )
-            row = c.execute("SELECT id, path, fetch_online_only FROM root WHERE path=?", (key,)).fetchone()
-            return Root(row["id"], Path(row["path"]), bool(row["fetch_online_only"]))
+            return _root(c.execute("SELECT id, path, fetch_online_only FROM root WHERE path=?", (key,)).fetchone())
 
         return self._write(op)
 
@@ -89,7 +43,7 @@ class SqliteStore(SqliteBase):
         rows = self._read().execute(
             "SELECT id, path, fetch_online_only FROM root WHERE enabled=1 ORDER BY id"
         ).fetchall()
-        return [Root(r["id"], Path(r["path"]), bool(r["fetch_online_only"])) for r in rows]
+        return [_root(r) for r in rows]
 
     def known_media(self, root_id: int) -> dict[str, MediaRecord]:
         rows = self._read().execute(
@@ -115,17 +69,15 @@ class SqliteStore(SqliteBase):
             c.execute("INSERT INTO job(media_id, stage) VALUES(?, ?)", (media_id, Stage.DERIVE.value))
 
         def op(c: sqlite3.Connection) -> int:
-            for f in plan.new:
-                cur = c.execute(
-                    "INSERT INTO media(root_id, rel_path, size, mtime, file_state) VALUES(?,?,?,?,?)",
-                    (plan.root_id, f.rel_path, f.size, f.mtime, FileState.ACTIVE.value),
-                )
-                c.execute("INSERT INTO job(media_id, stage) VALUES(?, ?)", (cur.lastrowid, Stage.DERIVE.value))
-            for f in plan.new_online_only:
-                c.execute(
-                    "INSERT INTO media(root_id, rel_path, size, mtime, file_state) VALUES(?,?,?,?,?)",
-                    (plan.root_id, f.rel_path, f.size, f.mtime, FileState.ONLINE_ONLY.value),
-                )
+            for items, state, queue in ((plan.new, FileState.ACTIVE, True),
+                                        (plan.new_online_only, FileState.ONLINE_ONLY, False)):
+                for f in items:
+                    media_id = c.execute(
+                        "INSERT INTO media(root_id, rel_path, size, mtime, file_state) VALUES(?,?,?,?,?)",
+                        (plan.root_id, f.rel_path, f.size, f.mtime, state.value),
+                    ).lastrowid
+                    if queue:
+                        c.execute("INSERT INTO job(media_id, stage) VALUES(?, ?)", (media_id, Stage.DERIVE.value))
             for media_id, f in plan.changed + plan.hydrated:
                 c.execute(
                     "UPDATE media SET size=?, mtime=?, content_hash=NULL, file_state=?, missing_since=NULL "
@@ -133,16 +85,15 @@ class SqliteStore(SqliteBase):
                     (f.size, f.mtime, FileState.CHANGED.value, media_id),
                 )
                 requeue_derive(c, media_id)
-            # Id lists go in as one JSON value: tens of thousands of "?" would pass SQLite's variable limit.
             if plan.reappeared:
                 c.execute(
-                    f"UPDATE media SET file_state=?, missing_since=NULL WHERE id IN {_JSON_IDS}",
-                    (FileState.ACTIVE.value, json.dumps(plan.reappeared)),
+                    f"UPDATE media SET file_state=?, missing_since=NULL WHERE id IN {JSON_IDS}",
+                    (FileState.ACTIVE.value, json_ids(plan.reappeared)),
                 )
             if plan.became_online_only:
                 c.execute(
-                    f"UPDATE media SET file_state=? WHERE id IN {_JSON_IDS}",
-                    (FileState.ONLINE_ONLY.value, json.dumps(plan.became_online_only)),
+                    f"UPDATE media SET file_state=? WHERE id IN {JSON_IDS}",
+                    (FileState.ONLINE_ONLY.value, json_ids(plan.became_online_only)),
                 )
             for media_id, f in plan.moved:
                 c.execute(
@@ -151,8 +102,8 @@ class SqliteStore(SqliteBase):
                 )
             if plan.missing:
                 c.execute(
-                    f"UPDATE media SET file_state=?, missing_since=COALESCE(missing_since, ?) WHERE id IN {_JSON_IDS}",
-                    (FileState.MISSING.value, now, json.dumps(plan.missing)),
+                    f"UPDATE media SET file_state=?, missing_since=COALESCE(missing_since, ?) WHERE id IN {JSON_IDS}",
+                    (FileState.MISSING.value, now, json_ids(plan.missing)),
                 )
             removed = 0
             if plan.remove_missing_before:
@@ -216,9 +167,8 @@ class SqliteStore(SqliteBase):
                 return []
             rows = c.execute(
                 f"UPDATE job SET state='running', attempts=attempts+1, lease_until=?, not_before=NULL "
-                f"WHERE id IN ({_placeholders(len(ids))}) "
-                f"RETURNING id, media_id, item_id, stage, model_id, attempts",
-                (until, *ids),
+                f"WHERE id IN {JSON_IDS} RETURNING id, media_id, item_id, stage, model_id, attempts",
+                (until, json_ids(ids)),
             ).fetchall()
             return sorted(
                 (Job(r["id"], r["media_id"], r["item_id"], Stage(r["stage"]), r["model_id"], r["attempts"])
@@ -247,9 +197,7 @@ class SqliteStore(SqliteBase):
 
     def finish_derive(self, job: Job, item_ids: list[int], next_stages: list[tuple[Stage, str]]) -> None:
         def op(c: sqlite3.Connection) -> None:
-            c.execute(
-                "UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,)
-            )
+            _mark_done(c, job.id)
             c.execute(
                 "UPDATE media SET file_state=? WHERE id=? AND file_state=?",
                 (FileState.ACTIVE.value, job.media_id, FileState.CHANGED.value),
@@ -298,7 +246,7 @@ class SqliteStore(SqliteBase):
             for r in old:
                 if r["id"] not in kept and r["person_id"] is None:
                     c.execute("DELETE FROM face WHERE id=?", (r["id"],))
-            c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
+            _mark_done(c, job.id)
             return ids
 
         return self._write(op)
@@ -307,7 +255,7 @@ class SqliteStore(SqliteBase):
         def op(c: sqlite3.Connection) -> None:
             c.execute("INSERT OR REPLACE INTO item_embedding(item_id, model_id, vector) VALUES(?, ?, ?)",
                       (job.item_id, job.model_id, np.asarray(vector, np.float32).tobytes()))
-            c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
+            _mark_done(c, job.id)
 
         self._write(op)
 
@@ -317,7 +265,7 @@ class SqliteStore(SqliteBase):
             if text:
                 c.execute("INSERT INTO item_text(item_id, source, model_id, body) VALUES(?, 'ocr', ?, ?)",
                           (job.item_id, job.model_id, text))
-            c.execute("UPDATE job SET state='done', lease_until=NULL, error=NULL WHERE id=?", (job.id,))
+            _mark_done(c, job.id)
 
         self._write(op)
 
@@ -369,9 +317,8 @@ class SqliteStore(SqliteBase):
         if not item_ids:
             return set()
         rows = self._read().execute(
-            f"SELECT DISTINCT item_id FROM job WHERE item_id IN ({_placeholders(len(item_ids))}) "
-            f"AND state NOT IN ('done', 'dead')",
-            item_ids,
+            f"SELECT DISTINCT item_id FROM job WHERE item_id IN {JSON_IDS} AND state NOT IN ('done', 'dead')",
+            (json_ids(item_ids),),
         ).fetchall()
         return {r[0] for r in rows}
 

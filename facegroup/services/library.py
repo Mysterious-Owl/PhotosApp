@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from facegroup.adapters.storage.base import iso
 from facegroup.domain.entities import FileInfo, FileState, MediaRecord, ScanReport
 from facegroup.domain.policies import Change, classify_change, move_candidates
 from facegroup.ports.media import FileSource
@@ -87,8 +88,7 @@ class LibraryService:
 
         plan.missing = list(unmatched)
         report.missing = sum(1 for r in unmatched.values() if r.file_state != FileState.MISSING)
-        cutoff = self._now() - self._grace
-        plan.remove_missing_before = cutoff.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        plan.remove_missing_before = iso(self._now() - self._grace)
         report.removed = self._store.apply_scan(plan)
         log.info("scan %s: %s", root.path, report)
         return report

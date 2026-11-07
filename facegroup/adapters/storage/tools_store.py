@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from facegroup.adapters.storage.sqlite_store import SqliteBase, iso, utc_now
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, iso
 from facegroup.domain.files import Copy
 
 
@@ -20,7 +20,7 @@ class SqliteToolsStore(SqliteBase):
             scan = c.execute(
                 "INSERT INTO dup_scan(roots, started_at, finished_at, files, bytes, cloud_only, errors) "
                 "VALUES(?,?,?,?,?,?,?)",
-                (json.dumps(roots), started_at, iso(utc_now()), files, total_bytes, cloud_only,
+                (json.dumps(roots), started_at, iso(self._now()), files, total_bytes, cloud_only,
                  json.dumps(errors[:200])),
             ).lastrowid
             for digest, size, copies in groups:
@@ -56,7 +56,7 @@ class SqliteToolsStore(SqliteBase):
         """Copies that were moved away no longer count as duplicates in the latest scan."""
         if paths:
             self._write(lambda c: c.execute(
-                "DELETE FROM dup_file WHERE path IN (SELECT value FROM json_each(?))", (json.dumps(paths),)))
+                f"DELETE FROM dup_file WHERE path IN {JSON_IDS}", (json.dumps(paths),)))
 
     # -- preferences and choices -------------------------------------------------------------------------
 
@@ -70,7 +70,7 @@ class SqliteToolsStore(SqliteBase):
             return
         self._write(lambda c: c.execute(
             "INSERT INTO folder_pref(folder_a, folder_b, keep, created_at) VALUES(?,?,?,?) "
-            "ON CONFLICT(folder_a, folder_b) DO UPDATE SET keep=excluded.keep", (a, b, keep, iso(utc_now()))))
+            "ON CONFLICT(folder_a, folder_b) DO UPDATE SET keep=excluded.keep", (a, b, keep, iso(self._now()))))
 
     def dup_choices(self) -> dict[str, str]:
         return dict(self._read().execute("SELECT hash, keep FROM dup_choice").fetchall())
@@ -87,7 +87,7 @@ class SqliteToolsStore(SqliteBase):
 
     def start_batch(self, kind: str) -> int:
         return self._write(lambda c: c.execute(
-            "INSERT INTO removal_batch(created_at, kind) VALUES(?,?)", (iso(utc_now()), kind)).lastrowid)
+            "INSERT INTO removal_batch(created_at, kind) VALUES(?,?)", (iso(self._now()), kind)).lastrowid)
 
     def record_removed(self, batch_id: int, original: str, holding: str | None, size: int, kept: str | None) -> None:
         """One row per move, written right after the move itself, so a crash mid-batch loses no record."""
@@ -114,4 +114,5 @@ class SqliteToolsStore(SqliteBase):
         return {r[0].casefold() for r in rows}
 
     def mark_restored(self, file_id: int) -> None:
-        self._write(lambda c: c.execute("UPDATE removed_file SET restored_at=? WHERE id=?", (iso(utc_now()), file_id)))
+        now = iso(self._now())
+        self._write(lambda c: c.execute("UPDATE removed_file SET restored_at=? WHERE id=?", (now, file_id)))

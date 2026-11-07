@@ -13,12 +13,10 @@ from pathlib import Path
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
+from facegroup.adapters.media.exif_tags import EXIF_DATETIME, EXIF_DATETIME_ORIGINAL, EXIF_IFD, GPS_IFD
+
 register_heif_opener()
 
-EXIF_DATETIME_ORIGINAL = 0x9003
-EXIF_DATETIME = 0x0132
-EXIF_IFD = 0x8769
-GPS_IFD = 0x8825
 _SAVE_FORMAT = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP", ".tif": "TIFF", ".tiff": "TIFF",
                 ".heic": "HEIF", ".heif": "HEIF"}
 
