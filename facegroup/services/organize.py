@@ -111,7 +111,7 @@ class OrganizeService:
         sets = []
         for members in connected_sets(len(rows), sorted(pairs)):
             kind = "exact" if len({rows[i]["content_hash"] for i in members}) == 1 else "near"
-            copies = [Copy(rows[i]["id"], (rows[i]["width"] or 0) * (rows[i]["height"] or 0),
+            copies = [Copy(rows[i]["id"], _area(rows[i]),
                            bool(rows[i]["taken_at"]), rows[i]["size"], rows[i]["rel_path"]) for i in members]
             sets.append((kind, [rows[i]["id"] for i in members], pick_keeper(copies)))
         self._store.replace_duplicates(sets)
@@ -131,7 +131,7 @@ class OrganizeService:
             ids = [rows[i]["id"] for i in members]
             chosen = [m for m in ids if m in picks]
             top = chosen[0] if chosen else rows[max(members, key=lambda i: (
-                rows[i]["face_q"] or 0, (rows[i]["width"] or 0) * (rows[i]["height"] or 0), rows[i]["size"]))]["id"]
+                rows[i]["face_q"] or 0, _area(rows[i]), rows[i]["size"]))]["id"]
             out.append((ids, top))
         self._store.replace_stacks(out)
         return out
@@ -154,6 +154,10 @@ class OrganizeService:
             "duplicate_extra": sum(len(s["members"]) - 1 for s in sets),
             "hidden": self._store.hidden_count(),
         }
+
+
+def _area(row: dict) -> int:
+    return (row["width"] or 0) * (row["height"] or 0)
 
 
 def _time(row: dict) -> float:

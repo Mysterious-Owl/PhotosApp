@@ -75,8 +75,7 @@ class SearchService:
         result.missing_embeddings = len(items) - len(ids)
         if len(ids):
             query = self._query_encoder().embed_queries([text])[0]
-            media_of = dict(zip(items.tolist(), item_media.tolist()))
-            ranked = top_media(np.array([media_of[i] for i in ids.tolist()]), vectors @ query, self._limit)
+            ranked = _rank_by_vector(items, item_media, ids, vectors, query, self._limit)
             rankings.append([m for m, _ in ranked])
             vector_rank = {m: r for r, (m, _) in enumerate(ranked, 1)}
             result.used_vectors = True
@@ -116,8 +115,14 @@ class SearchService:
         if query is None:
             return result
         ids, vectors = self._store.item_vectors(self._model_id, items)
-        media_of = dict(zip(items.tolist(), item_media.tolist()))
-        ranked = top_media(np.array([media_of[i] for i in ids.tolist()], np.int64), vectors @ query, self._limit + 1)
+        ranked = _rank_by_vector(items, item_media, ids, vectors, query, self._limit + 1)
         result.hits = [SearchHit(m, s, r) for r, (m, s) in enumerate(ranked, 1) if m != media_id][: self._limit]
         result.used_vectors = True
         return result
+
+
+def _rank_by_vector(items: np.ndarray, item_media: np.ndarray, ids: np.ndarray, vectors: np.ndarray,
+                    query: np.ndarray, limit: int) -> list[tuple[int, float]]:
+    """Photos by similarity of their items' vectors (rows for `ids`) to the query, best first."""
+    media_of = dict(zip(items.tolist(), item_media.tolist()))
+    return top_media(np.array([media_of[i] for i in ids.tolist()], np.int64), vectors @ query, limit)

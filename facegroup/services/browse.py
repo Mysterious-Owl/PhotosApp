@@ -70,9 +70,8 @@ class BrowseService:
     def events(self, filters: SearchFilters) -> list[dict]:
         out = []
         for e in events(self._store.dated_media(filters), self._gap, self._min):
-            folders = Counter(p.replace("\\", "/").rsplit("/", 1)[0] if "/" in p.replace("\\", "/") else ""
-                              for p in self._store.folder_of(e.media_ids).values())
-            folder = folders.most_common(1)[0][0].rsplit("/", 1)[-1] if folders else ""
+            folders = Counter(p.replace("\\", "/").rpartition("/")[0] for p in self._store.folder_of(e.media_ids).values())
+            folder = folders.most_common(1)[0][0].rpartition("/")[2] if folders else ""
             out.append({"key": e.start, "title": e.title, "folder": folder, "count": len(e.media_ids),
                         "cover": e.media_ids[len(e.media_ids) // 2], "media_ids": e.media_ids})
         return out

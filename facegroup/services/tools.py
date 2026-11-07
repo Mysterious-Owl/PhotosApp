@@ -160,6 +160,23 @@ def _parallel(paths: list[Path], work: Callable[[Path], str], runner: ToolRunner
     return {"counts": dict(counts), "errors": errors[:200]}
 
 
+def _write_tree(opts: ConvertOptions | MetadataOptions, extensions: frozenset[str] | None, runner: ToolRunner,
+                verb: str, target: Callable[[Path], Path], write: Callable[[Path, Path], str]) -> dict:
+    """`write(src, dst)` for every file of opts.folder (except those inside opts.output), keeping the folder layout:
+    dst is opts.output / target(path relative to opts.folder). A file already there is skipped unless overwrite."""
+    paths = [p for p in _files(opts.folder, extensions, opts.recurse, runner) if opts.output not in p.parents]
+
+    def work(src: Path) -> str:
+        dst = opts.output / target(src.relative_to(opts.folder))
+        if dst.exists() and not opts.overwrite:
+            return "skipped"
+        return write(src, dst)
+
+    out = _parallel(paths, work, runner, verb)
+    out["output"] = str(opts.output)
+    return out
+
+
 # -- Convert HEIC ------------------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -173,24 +190,16 @@ class ConvertOptions:
 
 
 def run_convert(opts: ConvertOptions, runner: ToolRunner) -> dict:
-    exts = None if opts.copy_others else HEIC_EXTENSIONS
-    paths = [p for p in _files(opts.folder, exts, opts.recurse, runner) if opts.output not in p.parents]
-
-    def work(src: Path) -> str:
-        rel = src.relative_to(opts.folder)
-        is_heic = src.suffix.lower() in HEIC_EXTENSIONS
-        dst = opts.output / rel.parent / converted_name(src.name, opts.fmt)
-        if dst.exists() and not opts.overwrite:
-            return "skipped"
-        if is_heic:
+    def write(src: Path, dst: Path) -> str:
+        if src.suffix.lower() in HEIC_EXTENSIONS:
             images.convert_heic(src, dst, opts.fmt)
             return "converted"
         images.copy_file(src, dst)
         return "copied"
 
-    out = _parallel(paths, work, runner, "Converting")
+    out = _write_tree(opts, None if opts.copy_others else HEIC_EXTENSIONS, runner, "Converting",
+                      lambda rel: rel.parent / converted_name(rel.name, opts.fmt), write)
     c = out["counts"]
-    out["output"] = str(opts.output)
     out["summary"] = (f"Converted {c.get('converted', 0)}, copied {c.get('copied', 0)}, "
                       f"skipped {c.get('skipped', 0)} already there, {c.get('failed', 0)} failed.")
     return out
@@ -232,18 +241,12 @@ def run_metadata_check(folder: Path, recurse: bool, runner: ToolRunner) -> dict:
 
 
 def run_metadata_clean(opts: MetadataOptions, runner: ToolRunner) -> dict:
-    paths = [p for p in _files(opts.folder, METADATA_EXTENSIONS, opts.recurse, runner) if opts.output not in p.parents]
-
-    def work(src: Path) -> str:
-        dst = opts.output / src.relative_to(opts.folder)
-        if dst.exists() and not opts.overwrite:
-            return "skipped"
+    def write(src: Path, dst: Path) -> str:
         images.strip_metadata(src, dst, keep_icc=opts.keep_icc, keep_date=opts.keep_date)
         return "cleaned"
 
-    out = _parallel(paths, work, runner, "Cleaning")
+    out = _write_tree(opts, METADATA_EXTENSIONS, runner, "Cleaning", lambda rel: rel, write)
     c = out["counts"]
-    out["output"] = str(opts.output)
     out["summary"] = (f"Cleaned {c.get('cleaned', 0)}, skipped {c.get('skipped', 0)} already there, "
                       f"{c.get('failed', 0)} failed.")
     return out
@@ -338,20 +341,12 @@ class DuplicatesService:
             for same_size in candidates:
                 if runner.should_stop():
                     break
-                for step, fn in (("quick", walk.quick_hash), ("full", walk.full_hash)):
-                    digests = list(pool.map(lambda f, fn=fn: _try(fn, f.path, errors), same_size))
-                    buckets: dict[str, list[walk.FoundFile]] = defaultdict(list)
-                    for f, d in zip(same_size, digests):
-                        if d is not None:
-                            buckets[d].append(f)
-                    if step == "quick":
-                        same_size = [f for b in buckets.values() if len(b) > 1 for f in b]
-                        if not same_size:
-                            break
-                    else:
-                        for d, fs in buckets.items():
-                            if len(fs) > 1:
-                                groups.append((d, fs[0].size, [Copy(f.path, f.size, f.mtime) for f in fs]))
+                quick = _bucket(same_size, walk.quick_hash, pool, errors)
+                same_size = [f for b in quick.values() if len(b) > 1 for f in b]
+                if same_size:
+                    for d, fs in _bucket(same_size, walk.full_hash, pool, errors).items():
+                        if len(fs) > 1:
+                            groups.append((d, fs[0].size, [Copy(f.path, f.size, f.mtime) for f in fs]))
                 done += len(same_size) or 1
                 runner.progress(min(done, total), total, "Comparing files with the same size")
         return groups
@@ -487,6 +482,16 @@ def _try(fn, path: str, errors: list[str]) -> str | None:
     except OSError as exc:
         errors.append(f"{path}: {exc.strerror or exc}")
         return None
+
+
+def _bucket(files: list[walk.FoundFile], fn, pool: ThreadPoolExecutor,
+            errors: list[str]) -> dict[str, list[walk.FoundFile]]:
+    """Files grouped by fn(path) (a hash), read on the pool; unreadable files are left out (and logged in errors)."""
+    buckets: dict[str, list[walk.FoundFile]] = defaultdict(list)
+    for f, d in zip(files, list(pool.map(lambda f: _try(fn, f.path, errors), files))):
+        if d is not None:
+            buckets[d].append(f)
+    return buckets
 
 
 def _unchanged(c: Copy) -> bool:

@@ -319,19 +319,15 @@ class PeopleService:
     @_serialized
     def accept(self, suggestion_id: int, name: str = "", exclude: set[int] = frozenset()) -> int:
         faces = [f for f in self._store.suggestion_faces(suggestion_id) if f not in exclude]
-        pid = self._store.apply_change(PeopleChange(
+        return self._apply(PeopleChange(
             "accept", face_ids=faces, new_person_name=name, clear_suggestions=[suggestion_id]))
-        self.assign()
-        return pid
 
     @_serialized
     def accept_into(self, suggestion_id: int, person_id: int, exclude: set[int] = frozenset()) -> int:
         rejected = self._store.rejections()
         faces = [f for f in self._store.suggestion_faces(suggestion_id)
                  if f not in exclude and person_id not in rejected.get(f, ())]
-        self._store.apply_change(PeopleChange(
-            "accept_into", face_ids=faces, to_person=person_id, clear_suggestions=[suggestion_id]))
-        self.assign()
+        self._apply(PeopleChange("accept_into", face_ids=faces, to_person=person_id, clear_suggestions=[suggestion_id]))
         return person_id
 
     @_serialized
@@ -345,9 +341,7 @@ class PeopleService:
             change.new_person_name, change.new_person_kind = "Not a person", "ignored"
         else:
             change.to_person = ignored
-        pid = self._store.apply_change(change)
-        self.assign()
-        return pid
+        return self._apply(change)
 
     @_serialized
     def rename(self, person_id: int, name: str) -> None:
@@ -357,9 +351,8 @@ class PeopleService:
     def merge(self, source_id: int, target_id: int) -> None:
         if source_id == target_id:
             return
-        self._store.apply_change(PeopleChange("merge", to_person=target_id, delete_persons=[source_id]))
-        self._policy_cache = None  # per-person strictness is keyed by person id, and one id just went away
-        self.assign()
+        # reset_policy: per-person strictness is keyed by person id, and one id just went away
+        self._apply(PeopleChange("merge", to_person=target_id, delete_persons=[source_id]), reset_policy=True)
 
     @_serialized
     def combine(self, person_ids: list[int], suggestion_ids: list[int], name: str = "") -> int | None:
@@ -386,27 +379,20 @@ class PeopleService:
         else:
             change.face_ids = faces
             change.new_person_name = name
-        pid = self._store.apply_change(change)
-        self._policy_cache = None  # as in merge
-        self.assign()
-        return pid
+        return self._apply(change, reset_policy=True)  # as in merge
 
     @_serialized
     def confirm(self, face_ids: list[int], person_id: int) -> None:
         """'Yes, this is them': turns automatic matches into confirmed ones (which then vote)."""
-        self._store.apply_change(PeopleChange("confirm", face_ids=face_ids, to_person=person_id))
-        self.assign()
+        self._apply(PeopleChange("confirm", face_ids=face_ids, to_person=person_id))
 
     @_serialized
     def move(self, face_ids: list[int], person_id: int) -> None:
-        self._store.apply_change(PeopleChange("move", face_ids=face_ids, to_person=person_id))
-        self.assign()
+        self._apply(PeopleChange("move", face_ids=face_ids, to_person=person_id))
 
     @_serialized
     def split(self, face_ids: list[int], name: str = "") -> int:
-        pid = self._store.apply_change(PeopleChange("split", face_ids=face_ids, new_person_name=name))
-        self.assign()
-        return pid
+        return self._apply(PeopleChange("split", face_ids=face_ids, new_person_name=name))
 
     @_serialized
     def restore(self, face_ids: list[int]) -> None:
@@ -418,9 +404,7 @@ class PeopleService:
     @_serialized
     def reject(self, face_ids: list[int], person_id: int) -> None:
         """'Not this person': unassign and remember, so no automatic step puts them back."""
-        self._store.apply_change(PeopleChange(
-            "reject", face_ids=face_ids, unassign=True, rejects=[(f, person_id) for f in face_ids]))
-        self.assign()
+        self._apply(PeopleChange("reject", face_ids=face_ids, unassign=True, rejects=[(f, person_id) for f in face_ids]))
 
     @_serialized
     def undo(self) -> str | None:
@@ -438,6 +422,15 @@ class PeopleService:
         self._policy_cache = None  # as in merge
         self.assign()
         return len(ids)
+
+    def _apply(self, change: PeopleChange, reset_policy: bool = False):
+        """Apply one user decision, then re-vote the undecided faces. Callers hold the lock (via _serialized).
+        reset_policy: the change removed person ids, so the cached per-person strictness is stale."""
+        result = self._store.apply_change(change)
+        if reset_policy:
+            self._policy_cache = None
+        self.assign()
+        return result
 
 
 def _spread_sample(people: np.ndarray, size: int) -> np.ndarray:

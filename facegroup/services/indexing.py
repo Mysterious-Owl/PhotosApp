@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -97,8 +98,7 @@ class IndexingService:
         report = StageReport(Stage.DERIVE)
         with ThreadPoolExecutor(self._s.decode_workers, thread_name_prefix="decode") as pool:
             while not self._should_stop():
-                jobs = self._store.lease_jobs(Stage.DERIVE, self._s.decode_workers * 2,
-                                              self._s.lease_seconds, self._s.max_attempts)
+                jobs = self._lease(Stage.DERIVE, self._s.decode_workers * 2)
                 if not jobs:
                     break
                 for ok in pool.map(lambda j: self._guarded(j, self._derive_one, report), jobs):
@@ -119,99 +119,81 @@ class IndexingService:
     # -- faces: one model loaded, decode pool feeds one inference loop -------------------------------
 
     def run_faces(self) -> StageReport:
-        report = StageReport(Stage.FACES)
-        analyzer: FaceAnalyzer | None = None
-        try:
-            with ThreadPoolExecutor(self._s.decode_workers, thread_name_prefix="load") as pool:
-                while not self._should_stop():
-                    jobs = self._store.lease_jobs(Stage.FACES, self._s.batch_size,
-                                                  self._s.lease_seconds, self._s.max_attempts)
-                    if not jobs:
-                        break
-                    if analyzer is None:
-                        analyzer = self._make_analyzer()  # loaded only when there is work
-                        self._suppressed = self._suppressed_source(analyzer.model_id)
-                    images = [pool.submit(self._working_image, j) for j in jobs]
-                    for job, image in zip(jobs, images):
-                        ok = self._guarded(job, lambda j: self._faces_one(j, image.result(), analyzer), report)
-                        self._count(report, ok)
-                    self._cleanup([j.item_id for j in jobs if j.item_id is not None])
-        finally:
-            if analyzer is not None:
-                analyzer.close()
-        return report
+        return self._model_pass(Stage.FACES, self._make_analyzer, lambda analyzer, jobs, loads, report: self._each(
+            jobs, loads, report, lambda j, image: self._faces_one(j, image, analyzer)), on_load=self._load_suppressed)
+
+    def _load_suppressed(self, analyzer: FaceAnalyzer) -> None:
+        self._suppressed = self._suppressed_source(analyzer.model_id)
 
     # -- embed: image embeddings for search, same pattern as faces --------------------------------------
 
     def run_embed(self) -> StageReport:
-        report = StageReport(Stage.EMBED)
         if self._make_embedder is None:
-            return report
-        embedder: Embedder | None = None
-        try:
-            with ThreadPoolExecutor(self._s.decode_workers, thread_name_prefix="load") as pool:
-                while not self._should_stop():
-                    jobs = self._store.lease_jobs(Stage.EMBED, self._s.batch_size,
-                                                  self._s.lease_seconds, self._s.max_attempts)
-                    if not jobs:
-                        break
-                    if embedder is None:
-                        embedder = self._make_embedder()
-                    loads = [pool.submit(self._working_image, j) for j in jobs]
-                    ready, images = [], []
-                    for job, load in zip(jobs, loads):  # a broken image fails alone, not the whole batch
-                        if self._guarded(job, lambda j, f=load: images.append(f.result()), report):
-                            ready.append(job)
-                        else:
-                            self._count(report, False)
-                    if ready:
-                        self._embed_batch(embedder, ready, images, report)
-                    self._cleanup([j.item_id for j in jobs if j.item_id is not None])
-        finally:
-            if embedder is not None:
-                embedder.close()
-        return report
+            return StageReport(Stage.EMBED)
+        return self._model_pass(Stage.EMBED, self._make_embedder, self._embed_batch)
 
-    def _embed_batch(self, embedder: Embedder, jobs: list[Job], images: list[np.ndarray],
-                     report: StageReport) -> None:
+    def _embed_batch(self, embedder: Embedder, jobs: list[Job], loads: list[Future], report: StageReport) -> None:
+        ready, images = [], []
+        for job, load in zip(jobs, loads):  # a broken image fails alone, not the whole batch
+            if self._guarded(job, lambda j, f=load: images.append(f.result()), report):
+                ready.append(job)
+            else:
+                self._count(report, False)
+        if not ready:
+            return
         try:
             vectors = embedder.embed_images(images)
         except Exception as exc:
             log.exception("embedding batch failed")
-            for job in jobs:
+            for job in ready:
                 self._fail(job, f"{type(exc).__name__}: {exc}", permanent=False, report=report)
                 self._count(report, False)
             return
-        for job, vec in zip(jobs, vectors):
+        for job, vec in zip(ready, vectors):
             ok = self._guarded(job, lambda j, v=vec: self._store.finish_embed(j, v), report)
             self._count(report, ok)
 
     # -- ocr: text in pictures likely to have it (runs after organising, which decides what is a screenshot) ---
 
     def run_ocr(self) -> StageReport:
-        report = StageReport(Stage.OCR)
         if not self._ocr_model_id:
-            return report
+            return StageReport(Stage.OCR)
         self._store.enqueue_ocr(self._ocr_model_id, self._ocr_all)
-        reader: TextReader | None = None
+        return self._model_pass(Stage.OCR, self._make_reader, lambda reader, jobs, loads, report: self._each(
+            jobs, loads, report, lambda j, image: self._store.finish_ocr(j, reader.read(image))))
+
+    # -- the model passes: lease a batch, load the model on first work, prefetch images, handle, clean up ---
+
+    def _model_pass(self, stage: Stage, make_model: Callable[[], Any],
+                    handle_batch: Callable[[Any, list[Job], list[Future], StageReport], None],
+                    on_load: Callable[[Any], None] | None = None) -> StageReport:
+        report = StageReport(stage)
+        model = None
         try:
             with ThreadPoolExecutor(self._s.decode_workers, thread_name_prefix="load") as pool:
                 while not self._should_stop():
-                    jobs = self._store.lease_jobs(Stage.OCR, self._s.batch_size,
-                                                  self._s.lease_seconds, self._s.max_attempts)
+                    jobs = self._lease(stage, self._s.batch_size)
                     if not jobs:
                         break
-                    if reader is None:
-                        reader = self._make_reader()
-                    images = [pool.submit(self._working_image, j) for j in jobs]
-                    for job, image in zip(jobs, images):
-                        ok = self._guarded(job, lambda j, im=image: self._store.finish_ocr(j, reader.read(im.result())), report)
-                        self._count(report, ok)
+                    if model is None:
+                        model = make_model()  # loaded only when there is work
+                        if on_load is not None:
+                            on_load(model)
+                    handle_batch(model, jobs, [pool.submit(self._working_image, j) for j in jobs], report)
                     self._cleanup([j.item_id for j in jobs if j.item_id is not None])
         finally:
-            if reader is not None:
-                reader.close()
+            if model is not None:
+                model.close()
         return report
+
+    def _each(self, jobs: list[Job], loads: list[Future], report: StageReport,
+              fn: Callable[[Job, np.ndarray], None]) -> None:
+        """Each job on its own: a broken image or a failed step fails only that job."""
+        for job, load in zip(jobs, loads):
+            self._count(report, self._guarded(job, lambda j, f=load: fn(j, f.result()), report))
+
+    def _lease(self, stage: Stage, n: int) -> list[Job]:
+        return self._store.lease_jobs(stage, n, self._s.lease_seconds, self._s.max_attempts)
 
     def _working_image(self, job: Job) -> np.ndarray:
         try:
