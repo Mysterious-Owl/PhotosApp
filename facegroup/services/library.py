@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from facegroup.adapters.storage.base import iso
+from facegroup.domain.clock import iso
 from facegroup.domain.entities import FileInfo, FileState, MediaRecord, ScanReport
 from facegroup.domain.policies import Change, classify_change, move_candidates
 from facegroup.ports.media import FileSource

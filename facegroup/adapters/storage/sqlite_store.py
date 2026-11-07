@@ -8,7 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
-from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, iso, json_ids
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, json_ids
+from facegroup.domain.clock import iso
 from facegroup.domain.entities import DetectedFace, FileState, Job, JobState, MediaRecord, Stage
 from facegroup.domain.policies import match_boxes
 from facegroup.ports.store import ImageMeta, Root, ScanPlan

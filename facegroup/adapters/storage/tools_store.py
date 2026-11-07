@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, iso
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase
+from facegroup.domain.clock import iso
 from facegroup.domain.files import Copy
 
 

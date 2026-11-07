@@ -7,7 +7,8 @@ import sqlite3
 
 import numpy as np
 
-from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, iso, json_ids, stack_vectors
+from facegroup.adapters.storage.base import JSON_IDS, SqliteBase, json_ids, stack_vectors
+from facegroup.domain.clock import iso
 from facegroup.ports.people import FaceRow, PeopleChange, PersonSummary, SuggestionSummary
 
 _CLEAR_FACE = "UPDATE face SET person_id=NULL, assigned_by=NULL, assign_score=NULL WHERE "

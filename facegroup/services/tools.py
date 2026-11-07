@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from facegroup.adapters.storage.base import iso, utc_now
+from facegroup.domain.clock import iso, utc_now
 from facegroup.adapters.tools import images, mover, walk
 from facegroup.domain.files import (
     CONVERTED_PREFIX,

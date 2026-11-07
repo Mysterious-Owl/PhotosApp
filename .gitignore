@@ -17,3 +17,4 @@ archive/*.zip
 # Left behind only if a tool is stopped mid-file, or if a tool is run on a folder inside the repo
 *.part
 FaceGroup removed/
+.claude/worktrees/

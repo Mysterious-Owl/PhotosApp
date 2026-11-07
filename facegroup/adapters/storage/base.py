@@ -6,21 +6,14 @@ import json
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 
 from facegroup.adapters.storage.db import connect
 from facegroup.adapters.storage.writer import DbWriter
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def iso(t: datetime) -> str:
-    return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from facegroup.domain.clock import utc_now
 
 
 # Id lists go in as one JSON value (`WHERE id IN {JSON_IDS}` with `json_ids(ids)`): tens of thousands of "?"
